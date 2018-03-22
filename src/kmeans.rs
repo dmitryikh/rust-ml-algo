@@ -8,11 +8,11 @@ pub struct KMeans
 
 impl KMeans
 {
-    pub fn fit( train: &DMatrix<f32>,
+    pub fn fit( train: &DMatrix<f64>,
             n_clusters_opt: Option<usize>,
             max_iter_opt: Option<usize>,
             n_init_opt: Option<usize>,
-          ) -> Result<(DMatrix<f32>, Vec<u32>, f32), String> {
+          ) -> Result<(DMatrix<f64>, Vec<u32>, f64), String> {
 
         let n_init = match n_init_opt {
             Some(i) if i == 0 => {return Err("n_init_opt can't be zero!".to_string());},
@@ -32,11 +32,11 @@ impl KMeans
         Ok((centroids, samples_id, inertia))
     }
 
-    pub fn fit_one( train: &DMatrix<f32>,
-                    centroids_opt: Option<DMatrix<f32>>,
+    pub fn fit_one( train: &DMatrix<f64>,
+                    centroids_opt: Option<DMatrix<f64>>,
                     n_clusters_opt: Option<usize>,
                     max_iter_opt: Option<usize>,
-                  ) -> Result<(DMatrix<f32>, Vec<u32>, f32), String> {
+                  ) -> Result<(DMatrix<f64>, Vec<u32>, f64), String> {
         let mut centroids;
         let n_clusters;
         match centroids_opt {
@@ -59,7 +59,7 @@ impl KMeans
             None => 100
         };
 
-        let dist_sq_func = |p1: &[f32], p2: &[f32]| -> f32 {
+        let dist_sq_func = |p1: &[f64], p2: &[f64]| -> f64 {
             let mut dist = 0.0;
             for (p1_i, p2_i) in p1.iter().zip(p2.iter()) {
                 dist += (p1_i - p2_i).powi(2);
@@ -117,7 +117,7 @@ impl KMeans
             for id in 0..n_clusters {
                 if clusters_count[id] != 0 {
                     for v in centroids.get_row_mut(id) {
-                        *v /= clusters_count[id] as f32;
+                        *v /= clusters_count[id] as f64;
                     }
                 }
             }
@@ -125,12 +125,12 @@ impl KMeans
         Ok((centroids, samples_id, inertia_prev))
     }
 
-    pub fn gen_random_centroids(train: &DMatrix<f32>, n_clusters: usize) -> Result<DMatrix<f32>, String> {
+    pub fn gen_random_centroids(train: &DMatrix<f64>, n_clusters: usize) -> Result<DMatrix<f64>, String> {
         let dim = train.cols(); 
         if dim == 0 || n_clusters == 0 || train.rows() == 0 {
             return Err("incorrect dimensions".to_string());
         }
-        let mut centroids: DMatrix<f32> = DMatrix::new_zeros(n_clusters, dim);
+        let mut centroids: DMatrix<f64> = DMatrix::new_zeros(n_clusters, dim);
         // 1. Получить границы по каждой размерности
         let mut min_row = train.get_row(0).to_vec();
         let mut max_row = train.get_row(0).to_vec();
@@ -158,12 +158,12 @@ impl KMeans
         Ok(centroids)
     }
 
-    pub fn take_random_centroids(train: &DMatrix<f32>, n_clusters: usize) -> Result<DMatrix<f32>, String> {
+    pub fn take_random_centroids(train: &DMatrix<f64>, n_clusters: usize) -> Result<DMatrix<f64>, String> {
         let dim = train.cols(); 
         if dim == 0 || n_clusters == 0 || train.rows() == 0 {
             return Err("incorrect dimensions".to_string());
         }
-        let mut centroids: DMatrix<f32> = DMatrix::new_zeros(n_clusters, dim);
+        let mut centroids: DMatrix<f64> = DMatrix::new_zeros(n_clusters, dim);
 
         let mut rng = rand::thread_rng();
         for (i, row_i) in rand::seq::sample_iter(&mut rng, 0..train.rows(), n_clusters).unwrap().iter().enumerate() {
@@ -176,7 +176,7 @@ impl KMeans
 
 #[test]
 fn gen_random_centroids_zero() {
-    let train: DMatrix<f32> = DMatrix::new_zeros(3, 3);
+    let train: DMatrix<f64> = DMatrix::new_zeros(3, 3);
     let n_clusters = 2;
     let centroids = KMeans::gen_random_centroids(&train, n_clusters).unwrap();
     for i in 0..centroids.rows() {
@@ -186,7 +186,7 @@ fn gen_random_centroids_zero() {
 
 #[test]
 fn gen_random_centroids_random() {
-    let mut train: DMatrix<f32> = DMatrix::new_zeros(0, 3);
+    let mut train: DMatrix<f64> = DMatrix::new_zeros(0, 3);
     train.append_row(&[0.5, 1.0, 0.0]);
     train.append_row(&[1.0, 0.5, 0.5]);
     train.append_row(&[0.0, 0.0, 1.0]);
@@ -204,13 +204,13 @@ fn gen_random_centroids_random() {
 #[test]
 #[should_panic(expected = "incorrect dimensions")]
 fn gen_random_centroids_panic() {
-    let train: DMatrix<f32> = DMatrix::new_zeros(0, 3);
+    let train: DMatrix<f64> = DMatrix::new_zeros(0, 3);
     KMeans::gen_random_centroids(&train, 2).unwrap();
 }
 
 #[test]
 fn kmeans_blobs() {
-    let train: DMatrix<f32> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
+    let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
     let (centroids, ids, inertia) = KMeans::fit(&train, Some(3), None, None).unwrap();
     println!("centroids = \n{}", centroids);
     println!("ids = \n{:?}", ids);
