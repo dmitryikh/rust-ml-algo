@@ -1,0 +1,7 @@
+[package]
+name = "ml-algo"
+version = "0.1.0"
+authors = ["dmitry.khominich <khdmitryi@gmail.com>"]
+
+[dependencies]
+rand = "*"
