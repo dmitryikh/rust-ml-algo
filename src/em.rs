@@ -26,12 +26,6 @@ impl SphericalGaussian {
     }
 }
 
-// impl Default for SphericalGaussian {
-//     fn default() -> SphericalGaussian {
-//         SphericalGaussian{ var: 1.0, mu: vec![0.0; 1] }
-//     }
-// }
-
 pub enum Initialization {
     Random,
     KMeans,
@@ -267,43 +261,70 @@ impl GaussianMixture {
     }
 }
 
-#[test]
-fn dim1() {
-    let var = 5.5;
-    let mu = 2.3;
-    let x = 3.0;
-    let sg = SphericalGaussian::new(var, &[mu]);
-    let uni = 1.0 / (2.0 * f64::consts::PI * var).sqrt() * (-0.5 * (x - mu).powi(2) / var).exp();
-    assert_eq!(uni, sg.eval(&[x]));
-}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use utils::{accuracy, accuracy_perm};
 
-#[test]
-fn em_blobs() {
-    let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
-    let mut gm = GaussianMixture::new( GaussianMixtureOptions::new()
-                                           .n_components(3)
-                                           .n_init(10)
-                                     );
-    gm.fit(&train).unwrap();
-    println!("components = \n{:?}", gm.components);
-    println!("weights = \n{:?}", gm.weights);
-    println!("log_likelihood = \n{:?}", gm.log_likelihood);
-    assert!((gm.log_likelihood - (-3.914224)).abs() < 1.0e-5);
-}
+    #[test]
+    fn dim1() {
+        let var = 5.5;
+        let mu = 2.3;
+        let x = 3.0;
+        let sg = SphericalGaussian::new(var, &[mu]);
+        let uni = 1.0 / (2.0 * f64::consts::PI * var).sqrt() * (-0.5 * (x - mu).powi(2) / var).exp();
+        assert_eq!(uni, sg.eval(&[x]));
+    }
 
-#[test]
-fn em_w_kmeans_blobs() {
-    let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
-    let mut gm = GaussianMixture::new( GaussianMixtureOptions::new()
-                                           .n_components(3)
-                                           .init_scenario(Initialization::KMeans)
-                                     );
-    gm.fit(&train).unwrap();
-    println!("components = \n{:?}", gm.components);
-    println!("weights = \n{:?}", gm.weights);
-    println!("log_likelihood = \n{:?}", gm.log_likelihood);
-    assert!((gm.log_likelihood - (-3.914224)).abs() < 1.0e-5);
+    #[test]
+    fn blobs() {
+        let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
+        let mut gm = GaussianMixture::new( GaussianMixtureOptions::new()
+                                               .n_components(3)
+                                               .n_init(10)
+                                         );
+        gm.fit(&train).unwrap();
+        println!("components = \n{:?}", gm.components);
+        println!("weights = \n{:?}", gm.weights);
+        println!("log_likelihood = \n{:?}", gm.log_likelihood);
+        assert!((gm.log_likelihood - (-3.914224)).abs() < 1.0e-5);
+    }
 
-    let labels: DMatrix<u32> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[2])).unwrap();
-    let (p_labels, p_prob) = gm.predict(&train).unwrap();
+    #[test]
+    fn blobs_w_kmeans() {
+        let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
+        let mut gm = GaussianMixture::new( GaussianMixtureOptions::new()
+                                               .n_components(3)
+                                               .init_scenario(Initialization::KMeans)
+                                         );
+        gm.fit(&train).unwrap();
+        println!("components = \n{:?}", gm.components);
+        println!("weights = \n{:?}", gm.weights);
+        println!("log_likelihood = \n{:?}", gm.log_likelihood);
+        assert!((gm.log_likelihood - (-3.914224)).abs() < 1.0e-5);
+
+        let labels: DMatrix<u32> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[2])).unwrap();
+        let (p_labels, p_prob) = gm.predict(&train).unwrap();
+        println!("accuracy = {}", accuracy(labels.data(), &p_labels));
+        println!("accuracy_perm = {}", accuracy_perm(labels.data(), &p_labels, &[0, 1, 2]));
+    }
+
+    #[test]
+    fn mouse() {
+        let train: DMatrix<f64> = DMatrix::from_csv("data/mouse.csv", 40, ',', Some(&[0, 1])).unwrap();
+        let mut gm = GaussianMixture::new( GaussianMixtureOptions::new()
+                                               .n_components(3)
+                                               .init_scenario(Initialization::KMeans)
+                                         );
+        gm.fit(&train).unwrap();
+        println!("components = \n{:?}", gm.components);
+        println!("weights = \n{:?}", gm.weights);
+        println!("log_likelihood = \n{:?}", gm.log_likelihood);
+        assert!((gm.log_likelihood - (1.30192)).abs() < 1.0e-5);
+        let labels: DMatrix<u32> = DMatrix::from_csv("data/mouse.csv", 40, ',', Some(&[2])).unwrap();
+        let (p_labels, p_prob) = gm.predict(&train).unwrap();
+        let accuracy = accuracy_perm(labels.data(), &p_labels, &[0, 1, 2]);
+        println!("accuracy_perm = {}", accuracy);
+        assert!((accuracy - 0.9979).abs() < 1.0e-4);
+    }
 }
