@@ -5,6 +5,7 @@ pub mod utils;
 pub mod matrix;
 pub mod kmeans;
 pub mod em;
+pub mod agg;
 
 #[cfg(test)]
 mod tests {
