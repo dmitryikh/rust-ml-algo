@@ -5,3 +5,4 @@ authors = ["dmitry.khominich <khdmitryi@gmail.com>"]
 
 [dependencies]
 rand = "*"
+permutohedron = "*"

@@ -84,6 +84,10 @@ impl<S: Clone + Default> DMatrix<S>
         Ok(())
     }
 
+    pub fn data(&self) -> &[S] {
+        return &self.data;
+    }
+
     pub fn is_empty(&self) -> bool {
         return self.c == 0 || self.r == 0;
     }

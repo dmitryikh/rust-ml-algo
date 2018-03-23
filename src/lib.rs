@@ -1,4 +1,5 @@
 extern crate rand;
+extern crate permutohedron;
 
 pub mod utils;
 pub mod matrix;

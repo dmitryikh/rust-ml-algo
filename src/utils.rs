@@ -3,6 +3,8 @@ use std::io;
 use std::str;
 use std::io::prelude::*;
 
+use permutohedron::Heap;
+
 pub fn read_csv_job<S, F>( fname: &str,
                            csv_skip_header: u32,
                            sep: char,
@@ -74,6 +76,24 @@ pub fn read_csv_job<S, F>( fname: &str,
     Ok(counter)
 }
 
+pub fn accuracy(real: &[u32], pred: &[u32]) -> f64 {
+    let matches = real.iter().zip(pred.iter()).fold(0, |matches, v| matches + if *v.0 == *v.1 { 1 } else { 0 });
+    return if real.is_empty() { 0.0 } else { matches as f64 / real.len() as f64};
+}
+
+pub fn accuracy_perm(real: &[u32], pred: &[u32], labels: &[u32]) -> f64 {
+    if real.is_empty() || pred.is_empty() { return 0.0; }
+    let mut labels = labels.to_vec();
+    let heap_algo = Heap::new(&mut labels);
+    let mut accuracy_max = 0.0;
+    for data in heap_algo {
+        let matches = real.iter().zip(pred.iter()).fold(0, |matches, v| matches + if *v.0 == data[*v.1 as usize] { 1 } else { 0 });
+        let accuracy = matches as f64 / real.len() as f64;
+        if accuracy > accuracy_max { accuracy_max = accuracy; }
+    }
+    accuracy_max
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -105,4 +125,25 @@ fn noexist_csv() {
                   false, 
                   |_| { }
                 ).unwrap();
+}
+
+#[test]
+fn accuracy_cases() {
+    let vec1 = [0, 1, 0, 1, 1, 0];
+    let vec2 = [0, 1, 1, 1, 0, 1];
+    assert_eq!(1.0, accuracy(&vec1, &vec1));
+    assert_eq!(0.0, accuracy(&[], &[]));
+    assert_eq!(0.5, accuracy(&vec1, &vec2));
+}
+
+#[test]
+fn accuracy_perm_cases() {
+    let vec1 = [0, 1, 0, 1, 1, 0];
+    let vec1_mislabeled = [1, 0, 1, 0, 0, 1];
+    let vec2 = [0, 1, 1, 1, 0, 1];
+    assert_eq!(1.0, accuracy_perm(&vec1, &vec1, &[0, 1]));
+    assert_eq!(1.0, accuracy_perm(&vec1, &vec1_mislabeled, &[0, 1]));
+    assert_eq!(0.0, accuracy_perm(&[], &[], &[0, 1]));
+    assert_eq!(0.5, accuracy_perm(&vec1, &vec2, &[0, 1]));
+    assert_eq!(0.5, accuracy_perm(&vec1_mislabeled, &vec2, &[0, 1]));
 }
