@@ -1,7 +1,9 @@
 use std::fs::File;
 use std::io;
 use std::str;
+use std::fmt;
 use std::io::prelude::*;
+use std::io::BufWriter;
 
 use permutohedron::Heap;
 
@@ -74,6 +76,23 @@ pub fn read_csv_job<S, F>( fname: &str,
         }
     }
     Ok(counter)
+}
+
+pub fn write_csv_col<S>( fname: &str,
+                         data: &[S],
+                         header: Option<&str>,
+                       ) -> Result<(), String>
+    where S : fmt::Display
+{
+    let f = File::create(fname).map_err(|_| format!("Can't open file {}", fname))?;
+    let mut f = BufWriter::new(f);
+    if let Some(ref h) = header {
+        write!(f, "{}\n", h).map_err(|_| "Can't write header".to_string())?;
+    }
+    for v in data {
+        write!(f, "{}\n", v).map_err(|_| "Can't write row".to_string())?;
+    }
+    Ok(())
 }
 
 pub fn accuracy(real: &[u32], pred: &[u32]) -> f64 {
