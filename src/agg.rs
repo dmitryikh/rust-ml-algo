@@ -1,3 +1,7 @@
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::prelude::*;
+
 use matrix::DMatrix;
 
 #[derive(Debug)]
@@ -187,6 +191,18 @@ impl Agglomerative {
             }
         }
         Ok(labels)
+    }
+
+    pub fn save_scipy_linkage(&self, fname: &str) -> Result<(), String> {
+        if self.clusters.is_empty() { return Err("No clusters".to_string()); }
+        let f = File::create(fname).map_err(|_| format!("Can't open file {}", fname))?;
+        let mut f = BufWriter::new(f);
+        write!(f, "left,right,distance,n_points\n").map_err(|_| "Can't write header".to_string())?;
+        for cluster in &self.clusters {
+            write!(f, "{},{},{},{}\n", cluster.left, cluster.right, cluster.dist, cluster.n_points)
+                .map_err(|_| format!("Failed while writing cluster {:?}", cluster))?;
+        }
+        Ok(())
     }
 }
 
