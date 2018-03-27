@@ -211,6 +211,7 @@ mod test {
     use super::*;
     use utils::{accuracy_perm, write_csv_col};
 
+    /* Слишком медленный
     #[test]
     fn blobs() {
         let train: DMatrix<f64> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[0, 1])).unwrap();
@@ -227,6 +228,7 @@ mod test {
             assert_eq!(accuracy, 1.0);
         }
     }
+    */
 
     #[test]
     fn mouse() {
