@@ -77,7 +77,7 @@ impl GaussianMixtureOptions {
     }
 }
 
-struct GaussianMixture {
+pub struct GaussianMixture {
     components: Vec<SphericalGaussian>,
     weights: Vec<f64>,
     log_likelihood: f64,
@@ -304,7 +304,7 @@ mod test {
         assert!((gm.log_likelihood - (-3.914224)).abs() < 1.0e-5);
 
         let labels: DMatrix<u32> = DMatrix::from_csv("data/blobs.csv", 1, ',', Some(&[2])).unwrap();
-        let (p_labels, p_prob) = gm.predict(&train).unwrap();
+        let (p_labels, _) = gm.predict(&train).unwrap();
         println!("accuracy = {}", accuracy(labels.data(), &p_labels));
         println!("accuracy_perm = {}", accuracy_perm(labels.data(), &p_labels, &[0, 1, 2]));
     }
@@ -322,7 +322,7 @@ mod test {
         println!("log_likelihood = \n{:?}", gm.log_likelihood);
         assert!((gm.log_likelihood - (1.30192)).abs() < 1.0e-5);
         let labels: DMatrix<u32> = DMatrix::from_csv("data/mouse.csv", 40, ',', Some(&[2])).unwrap();
-        let (p_labels, p_prob) = gm.predict(&train).unwrap();
+        let (p_labels, _) = gm.predict(&train).unwrap();
         let accuracy = accuracy_perm(labels.data(), &p_labels, &[0, 1, 2]);
         println!("accuracy_perm = {}", accuracy);
         assert!((accuracy - 0.9979).abs() < 1.0e-4);

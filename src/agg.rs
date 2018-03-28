@@ -105,8 +105,8 @@ impl Agglomerative {
             debug_assert!(pair_min != (0, 0));
 
             // объединяем кластера
-            let u = if (pair_min.0 < n_points) { 1 } else { self.clusters[pair_min.0 - n_points].n_points };
-            let v = if (pair_min.1 < n_points) { 1 } else { self.clusters[pair_min.1 - n_points].n_points };
+            let u = if pair_min.0 < n_points { 1 } else { self.clusters[pair_min.0 - n_points].n_points };
+            let v = if pair_min.1 < n_points { 1 } else { self.clusters[pair_min.1 - n_points].n_points };
             self.clusters.push(AggCluster{ left: pair_min.0,
                                            right: pair_min.1,
                                            dist: dist_min,
@@ -136,7 +136,7 @@ impl Agglomerative {
                             (au, av, -au * av, 0.0)
                         }
                         Linkage::Ward => {
-                            let s = if (j < n_points) { 1 } else { self.clusters[j - n_points].n_points };
+                            let s = if j < n_points { 1 } else { self.clusters[j - n_points].n_points };
                             let s = s as f64;
                             ((s + u) / (s + w), (s + v) / (s + w), -s / (s + w), 0.0)
                         }

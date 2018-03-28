@@ -1,5 +1,4 @@
 use kdtree::KdTree;
-use kdtree::ErrorKind;
 use kdtree::distance::squared_euclidean;
 
 use matrix::DMatrix;
@@ -94,7 +93,7 @@ impl Dbscan {
 
     pub fn labels(&self) -> Vec<i32> {
         let mut ilabels: Vec<i32> = Vec::with_capacity(self.labels.len());
-        for (i, label) in self.labels.iter().enumerate() {
+        for label in &self.labels {
             ilabels.push( match label {
                 &PointLabel::Noise => -1,
                 &PointLabel::Border(id) => id as i32,
@@ -152,13 +151,13 @@ mod test {
         kdtree.add(&[0.0, 0.1], 3).unwrap();
         let res = kdtree.nearest(&[0.0, 0.01], 2, &squared_euclidean).unwrap();
         println!("res = {:?}", res);
-        for (d, id) in res {
+        for (_, id) in res {
             assert!(*id == 0 || *id == 3);
         }
 
         let res = kdtree.within(&[0.0, 0.0], 0.01001, &squared_euclidean).unwrap();
         println!("res = {:?}", res);
-        for (d, id) in res {
+        for (_, id) in res {
             assert!(*id == 0 || *id == 3 || *id == 1);
         }
     }
