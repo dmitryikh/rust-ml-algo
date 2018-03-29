@@ -74,11 +74,9 @@ impl Dbscan {
         // Размечаем остальные точки на `Border` и `Noise`
         for i in 0..n_points {
             if let PointLabel::Core(_) = self.labels[i] { continue; }
-            // let mut is_border = false;
             let mut cur_id = None;
             for id in &neighbors[i] {
                 if let PointLabel::Core(id) = self.labels[*id] {
-                    // is_border = true;
                     cur_id = Some(id);
                     break;
                 }
