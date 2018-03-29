@@ -8,6 +8,7 @@ pub mod kmeans;
 pub mod em;
 pub mod agg;
 pub mod dbscan;
+pub mod mshift;
 
 #[cfg(test)]
 mod tests {

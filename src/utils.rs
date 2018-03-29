@@ -4,6 +4,7 @@ use std::str;
 use std::fmt;
 use std::io::prelude::*;
 use std::io::BufWriter;
+use std::ops::{Add, Sub, Mul};
 
 use permutohedron::Heap;
 
@@ -113,6 +114,20 @@ pub fn accuracy_perm(real: &[u32], pred: &[u32], labels: &[u32]) -> f64 {
     accuracy_max
 }
 
+pub fn vec_dot<S>(a: &[S], b: &[S]) -> S
+    where S: Default + Copy + Add<Output = S> + Mul<Output = S> {
+    a.iter()
+        .zip(b.iter())
+        .fold(S::default(), |sum, (ai, bi)| sum + *ai * *bi)
+}
+
+pub fn vec_sub<S>(a: &[S], b: &[S]) -> Vec<S>
+    where S: Default + Copy + Sub<Output = S> {
+    a.iter()
+        .zip(b.iter())
+        .map(|(ai, bi)| *ai - *bi).collect()
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -165,4 +180,18 @@ fn accuracy_perm_cases() {
     assert_eq!(0.0, accuracy_perm(&[], &[], &[0, 1]));
     assert_eq!(0.5, accuracy_perm(&vec1, &vec2, &[0, 1]));
     assert_eq!(0.5, accuracy_perm(&vec1_mislabeled, &vec2, &[0, 1]));
+}
+
+#[test]
+fn vec_dot_cases() {
+    assert_eq!(vec_dot(&[0, 1, 2], &[4, 5, 6]), 17);
+    assert_eq!(vec_dot(&[0, 1, 2], &[4, 5]), 5);
+    assert_eq!(vec_dot(&[1.2, 4.5, 0.0], &[0.0, 2.0, 9.6]), 9.0);
+}
+
+#[test]
+fn vec_sub_cases() {
+    assert_eq!(vec_sub(&[0, 1, 2], &[4, 5, 6]), [-4, -4, -4]);
+    assert_eq!(vec_sub(&[0, 1, 2], &[4, 5]), [-4, -4]);
+    assert_eq!(vec_sub(&[1.2, 4.5, 0.0], &[0.0, 2.0, 9.6]), [1.2, 2.5, -9.6]);
 }

@@ -2,6 +2,7 @@ use std::fmt;
 use std::str;
 use utils::read_csv_job;
 
+#[derive(Clone)]
 pub struct DMatrix<S>
 {
     r: usize,
