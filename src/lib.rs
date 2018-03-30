@@ -9,6 +9,7 @@ pub mod em;
 pub mod agg;
 pub mod dbscan;
 pub mod mshift;
+pub mod cart;
 
 #[cfg(test)]
 mod tests {

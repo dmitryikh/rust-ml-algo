@@ -5,6 +5,8 @@ use std::fmt;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::ops::{Add, Sub, Mul};
+use rand::{Rng, Isaac64Rng, SeedableRng};
+use rand;
 
 use permutohedron::Heap;
 
@@ -139,6 +141,15 @@ pub fn mae_error(real: &[f64], pred: &[f64]) -> f64 {
     real.iter().zip(pred.iter())
        .fold(0.0, |sum, (&ri, &pi)| sum + (ri - pi).abs())
        / real.len() as f64
+}
+
+pub fn isaac_rng(seed: u64) -> Isaac64Rng {
+    let seed = if seed == 0 {
+        rand::thread_rng().next_u64()
+    } else {
+        seed
+    };
+    Isaac64Rng::from_seed(&[seed])
 }
 
 #[test]
