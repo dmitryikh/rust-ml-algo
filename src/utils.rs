@@ -128,6 +128,19 @@ pub fn vec_sub<S>(a: &[S], b: &[S]) -> Vec<S>
         .map(|(ai, bi)| *ai - *bi).collect()
 }
 
+pub fn rmse_error(real: &[f64], pred: &[f64]) -> f64 {
+    (real.iter().zip(pred.iter())
+         .fold(0.0, |sum, (&ri, &pi)| sum + (ri - pi).powi(2))
+         / real.len() as f64
+    ).sqrt()
+}
+
+pub fn mae_error(real: &[f64], pred: &[f64]) -> f64 {
+    real.iter().zip(pred.iter())
+       .fold(0.0, |sum, (&ri, &pi)| sum + (ri - pi).abs())
+       / real.len() as f64
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -194,4 +207,16 @@ fn vec_sub_cases() {
     assert_eq!(vec_sub(&[0, 1, 2], &[4, 5, 6]), [-4, -4, -4]);
     assert_eq!(vec_sub(&[0, 1, 2], &[4, 5]), [-4, -4]);
     assert_eq!(vec_sub(&[1.2, 4.5, 0.0], &[0.0, 2.0, 9.6]), [1.2, 2.5, -9.6]);
+}
+
+#[test]
+fn rmse_cases() {
+    assert_eq!(rmse_error(&[0.0, 1.0, 0.0], &[0.0, 0.0, 0.0]), (1.0 as f64/ 3.0).sqrt());
+    assert_eq!(rmse_error(&[1.0, 2.0, 10.0], &[1.0, 2.0, 10.0]), 0.0);
+}
+
+#[test]
+fn mae_cases() {
+    assert_eq!(mae_error(&[0.0, 1.0, 0.0], &[0.0, 0.0, 0.0]), 1.0 / 3.0);
+    assert_eq!(mae_error(&[1.0, 2.0, 10.0], &[1.0, 2.0, 10.0]), 0.0);
 }
