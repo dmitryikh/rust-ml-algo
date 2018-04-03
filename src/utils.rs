@@ -63,7 +63,7 @@ pub fn read_csv_job<S, F>( fname: &str,
                                                        no, tokens.len(), max_col));
                 }
                 for (i, index) in usecols.iter().enumerate() {
-                    vals[i] = match tokens[*index].parse() {
+                    vals[i] = match tokens[*index].trim().parse() {
                         Ok(val) => { val },
                         Err(_) if skip_errors => { continue 'outer; },
                         Err(_) => {
