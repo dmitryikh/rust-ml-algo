@@ -100,6 +100,17 @@ impl<S: Clone + Default> DMatrix<S>
     pub fn cols(&self) -> usize {
         return self.c;
     }
+
+    pub fn check_shape(&self) -> Result<(), String> {
+        if self.cols() == 0 {
+            Err("cols = 0".to_string())
+        } else if self.rows() == 0 {
+            Err("rows = 0".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
 }
 
 impl<S: fmt::Display> fmt::Display for DMatrix<S> {
