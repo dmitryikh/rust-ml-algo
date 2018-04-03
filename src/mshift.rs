@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use rand;
 use kdtree::KdTree;
 use kdtree::distance::squared_euclidean;
@@ -10,6 +11,7 @@ pub enum SeedOptions {
     TrainSet,
     RandomChoice(usize),
     Custom(DMatrix<f64>),
+    Bins(f64 /* bin size */ , u32 /* min_count */ ),
 }
 
 pub struct MeanShiftOptions {
@@ -81,6 +83,7 @@ impl MeanShift {
             SeedOptions::Custom(ref opt_seeds) if opt_seeds.cols() == n_dim && opt_seeds.rows() > 0 => {
                 opt_seeds.clone()
             },
+            SeedOptions::Bins(bin_size, min_count) => { get_bin_seeds(train, bin_size, min_count)? },
             _ => { return Err("Invalid seeds from options".to_string()); },
         };
         let n_seeds = seeds.rows();
@@ -200,6 +203,29 @@ impl MeanShift {
     }
 }
 
+pub fn get_bin_seeds(train: &DMatrix<f64>, bin_size: f64, min_count: u32) -> Result<DMatrix<f64>, String> {
+    train.check_shape()?;
+    let n_dim = train.cols();
+    let n_samples = train.rows();
+    let mut bin_sizes = HashMap::new();
+
+    // Считаем кол-во попаданий в каждый бин
+    for i in 0..n_samples {
+        let key = train.get_row(i).iter().map(|&xi| (xi / bin_size).round() as i32).collect::<Vec<i32>>();
+        let counter = bin_sizes.entry(key).or_insert(0 as u32);
+        *counter += 1;
+    }
+
+    let mut seeds: DMatrix<f64> = DMatrix::new_zeros(0, n_dim);
+
+    for (bin_coords, count) in bin_sizes.iter() {
+        if *count >= min_count {
+            seeds.append_row(&bin_coords.iter().map(|&xi| xi as f64 * bin_size).collect::<Vec<f64>>());
+        }
+    }
+    Ok(seeds)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -239,4 +265,27 @@ mod test {
     //     println!("n_clusters = \n{:?}", ms.n_clusters());
     //     println!("centers = \n{}", ms.centers);
     // }
+
+    #[test]
+    fn get_bin_seeds_case1() {
+        let mut train = DMatrix::new_zeros(0, 2);
+        train.append_row(&[1.0, 1.0]);
+        train.append_row(&[7.0, 8.0]);
+        train.append_row(&[4.0, 7.0]);
+        train.append_row(&[4.0, 4.0]);
+        train.append_row(&[2.0, 5.0]);
+        train.append_row(&[2.0, 1.0]);
+        train.append_row(&[8.0, 7.0]);
+        train.append_row(&[2.0, 2.0]);
+
+        let ret = get_bin_seeds(&train, 3.0, 2).unwrap();
+        assert_eq!(ret.rows(), 2);
+        for i in 0..ret.rows() {
+            if ret.get_row(i) == &[3.0, 3.0] {
+            } else if ret.get_row(i) == &[3.0, 6.0] {
+            } else {
+                panic!("Wrong answer");
+            }
+        }
+    }
 }
