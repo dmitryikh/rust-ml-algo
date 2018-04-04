@@ -10,6 +10,7 @@ pub mod agg;
 pub mod dbscan;
 pub mod mshift;
 pub mod cart;
+pub mod rforest;
 
 #[cfg(test)]
 mod tests {
