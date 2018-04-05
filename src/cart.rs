@@ -273,6 +273,7 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
                                  f_vals.windows(2).filter(|w| w[0] != w[1]).map(|w| (w[1] + w[0]) / 2.0)
                              )
                              .collect::<Vec<_>>();
+        if thresholds.len() < 2 { continue; }
         // итерируясь по каждому промежуточному значению составляем lhs и rhs выборки
         for threshold in thresholds {
             let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
@@ -296,12 +297,12 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
             }
         }
     }
-    debug_assert!(parent.impurity > parent.impurity_after);  // рассчитываем только на улучшение!
     if (!found_best) { return None; }
-    println!("Best division on feature {} on value {}, \
-              impurity was {}, impurity is {}",
-             parent.rule.unwrap().0, parent.rule.unwrap().1, parent.impurity, parent.impurity_after
-            );
+    debug_assert!(parent.impurity > parent.impurity_after);  // рассчитываем только на улучшение!
+    // println!("Best division on feature {} on value {}, \
+    //           impurity was {}, impurity is {}",
+    //          parent.rule.unwrap().0, parent.rule.unwrap().1, parent.impurity, parent.impurity_after
+    //         );
     Some((Node{ rule: None,
                 nodes: None,
                 size: lhs_ids_best.len(),
