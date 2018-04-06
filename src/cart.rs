@@ -25,13 +25,22 @@ pub fn gini_bin(p: f64) -> f64 {
     2.0 * p * (1.0 - p)
 }
 
-fn calc_impurity_gini(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
-        (avg, gini_bin(avg))
-    }
+// fn calc_impurity_gini(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
+//     if ids.is_empty() {
+//         (0.0, 0.0)
+//     } else {
+//         let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
+//         (avg, gini_bin(avg))
+//     }
+// }
+
+fn calc_impurity_gini(labels: &[u32], ids: &[usize], pos: usize) -> (f64 /*lhs_avg*/, f64 /*lhs_impurity*/,
+                                                         f64 /*rhs_avg*/, f64 /*rhs_impurity*/) {
+    debug_assert!(pos > 0 && pos < ids.len());
+
+    let lhs_avg = ids[0..pos].iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / pos as f64;
+    let rhs_avg = ids[pos..].iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / (ids.len() - pos) as f64;
+    (lhs_avg, gini_bin(lhs_avg), rhs_avg, gini_bin(rhs_avg))
 }
 
 fn calc_impurity_entropy(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
@@ -43,14 +52,32 @@ fn calc_impurity_entropy(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*i
     }
 }
 
-fn calc_impurity_mse(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
+// fn calc_impurity_mse(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
+//     if ids.is_empty() {
+//         (0.0, 0.0)
+//     } else {
+//         let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
+//         let mse = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).powi(2)) / ids.len() as f64;
+//         (avg, mse)
+//     }
+// }
+
+fn calc_impurity_mse(y: &[f64], ids: &[usize], pos: usize) -> (f64 /*lhs_avg*/, f64 /*lhs_impurity*/,
+                                                               f64 /*rhs_avg*/, f64 /*rhs_impurity*/) {
+    debug_assert!(pos < ids.len());
+    let (lhs_avg, lhs_mse) = if pos == 0 {
         (0.0, 0.0)
     } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
-        let mse = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).powi(2)) / ids.len() as f64;
-        (avg, mse)
-    }
+        let lhs_avg = ids[0..pos].iter().fold(0.0, |sum, &i| sum + y[i]) / pos as f64;
+        let lhs_mse = ids[0..pos].iter().fold(0.0, |sum, &i| sum + (y[i] - lhs_avg).powi(2)) / pos as f64;
+        (lhs_avg, lhs_mse)
+    };
+
+
+    let rhs_avg = ids[pos..].iter().fold(0.0, |sum, &i| sum + y[i]) / (ids.len() - pos) as f64;
+    let rhs_mse = ids[pos..].iter().fold(0.0, |sum, &i| sum + (y[i] - rhs_avg).powi(2)) / (ids.len() - pos) as f64;
+
+    (lhs_avg, lhs_mse, rhs_avg, rhs_mse)
 }
 
 fn calc_impurity_mae(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
@@ -178,7 +205,7 @@ impl ClsTree {
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, labels: &[u32], ids: Vec<usize>) -> Result<(), String> {
         let calc_impurity = match self.options.split_criterion {
             SplitCriteria::Gini => calc_impurity_gini,
-            SplitCriteria::Entropy => calc_impurity_entropy,
+            // SplitCriteria::Entropy => calc_impurity_entropy,
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
         self.nodes = fit(train, labels, ids, calc_impurity, &self.options)?;
@@ -207,7 +234,7 @@ impl RegTree {
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, y: &[f64], ids: Vec<usize>) -> Result<(), String> {
         let calc_impurity = match self.options.split_criterion {
             SplitCriteria::MSE => calc_impurity_mse,
-            SplitCriteria::MAE => calc_impurity_mae,
+            // SplitCriteria::MAE => calc_impurity_mae,
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
         self.nodes = fit(train, y, ids, calc_impurity, &self.options)?;
@@ -221,7 +248,7 @@ impl RegTree {
 
 fn best_split<F, L, R>( train: &DMatrix<f64>,
                         labels: &[L],
-                        ids: &[usize],
+                        ids: &mut [usize],
                         calc_impurity: &F,
                         parent: &mut Node,
                         options: &CartOptions,
@@ -229,7 +256,7 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
                       )
     -> Option<(Node, Vec<usize>, Node, Vec<usize>)>
     where
-    F: Fn(&[L], &[usize]) -> (f64, f64),
+    F: Fn(&[L], &[usize], usize) -> (f64, f64, f64, f64),
     R: Rng,
 {
     let n_samples = ids.len();
@@ -264,31 +291,42 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
     };
     for f_id in f_ids {
         f_vals.clear();
+        // сортируем ids по значению признака f_id
+        ids.sort_unstable_by(|&a, &b| train.get_val(a, f_id).partial_cmp(&train.get_val(b, f_id)).unwrap());
         ids.iter().for_each(|&i| f_vals.push(train.get_val(i, f_id)));
-        // сортируем и уникализируем все значения признака f_id
         // составляем вектор из промежуточных значений
-        f_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        let thresholds = Some(f_vals[0]).into_iter()
-                             .chain(  // включаем первый элемент
-                                 f_vals.windows(2).filter(|w| w[0] != w[1]).map(|w| (w[1] + w[0]) / 2.0)
-                             )
-                             .collect::<Vec<_>>();
-        if thresholds.len() < 2 { continue; }
+        // f_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let min_f_delta = 1.0e-7;
+        // let mut threshold = f_vals[0];
+        let mut pos_prev = 0;
+        // let thresholds = Some(f_vals[0]).into_iter()
+        //                      .chain(  // включаем первый элемент
+        //                         f_vals[1..].iter().filter(|&&w|
+        //                         {
+        //                             if w > last_element {
+        //                                 last_element = w;
+        //                                 return true;
+        //                             } else { return false; }
+        //                         }).windows(2).map(|w| (w[1] + w[0]) / 2.0)
+        //                      );
         // итерируясь по каждому промежуточному значению составляем lhs и rhs выборки
-        for threshold in thresholds {
-            let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
-            // выборки не могут быть пустыми, т.к. мы разбиваем thresholds, которые лежат внутри диапазона признака
-            debug_assert!(!lhs_ids.is_empty() && !rhs_ids.is_empty());
-            if lhs_ids.len() < options.min_in_leaf || rhs_ids.len() < options.min_in_leaf { continue; }
-            let (lhs_avg, lhs_impurity) = calc_impurity(labels, &lhs_ids);
-            let (rhs_avg, rhs_impurity) = calc_impurity(labels, &rhs_ids);
-            let q = lhs_ids.len() as f64 / n_samples as f64 * lhs_impurity
-                  + rhs_ids.len() as f64 / n_samples as f64 * rhs_impurity;
+        // for threshold in thresholds {
+        for pos in 1..ids.len() {
+            if f_vals[pos] - f_vals[pos_prev] < min_f_delta { continue; }
+            let threshold = (f_vals[pos] + f_vals[pos_prev]) * 0.5;
+            pos_prev = pos;
+            // let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
+            // // выборки не могут быть пустыми, т.к. мы разбиваем thresholds, которые лежат внутри диапазона признака
+            // debug_assert!(!lhs_ids.is_empty() && !rhs_ids.is_empty());
+            if pos < options.min_in_leaf || (ids.len() - pos) < options.min_in_leaf { continue; }
+            let (lhs_avg, lhs_impurity, rhs_avg, rhs_impurity) = calc_impurity(labels, &ids, pos);
+            let q = pos as f64 / n_samples as f64 * lhs_impurity
+                  + (ids.len() - pos) as f64 / n_samples as f64 * rhs_impurity;
             if q < parent.impurity_after {
                 parent.rule = Some((f_id, threshold));
                 parent.impurity_after = q;
-                lhs_ids_best = lhs_ids;
-                rhs_ids_best = rhs_ids;
+                lhs_ids_best = ids[0..pos].to_vec();
+                rhs_ids_best = ids[pos..].to_vec();
                 lhs_impurity_best = lhs_impurity;
                 rhs_impurity_best = rhs_impurity;
                 lhs_avg_best = lhs_avg;
@@ -324,9 +362,9 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
 
 fn build_root<F, L>(train: &DMatrix<f64>, labels: &[L], ids: &[usize], calc_impurity: &F) -> Node
     where
-    F: Fn(&[L], &[usize]) -> (f64, f64)
+    F: Fn(&[L], &[usize], usize) -> (f64, f64, f64, f64)
 {
-    let (avg, impurity) = calc_impurity(labels, ids);
+    let (_, _, avg, impurity) = calc_impurity(labels, ids, 0);
     let node = Node{ rule: None, nodes: None, size: ids.len(), avg: avg, impurity: impurity, impurity_after: impurity };
     node
 }
@@ -347,7 +385,7 @@ fn split_by_rule(train: &DMatrix<f64>, ids: &[usize], f_id: usize, threshold: f6
 fn fit<F, L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, calc_impurity: F, options: &CartOptions)
     -> Result<Vec<Node>, String>
     where
-    F: Fn(&[L], &[usize]) -> (f64, f64)
+    F: Fn(&[L], &[usize], usize) -> (f64, f64, f64, f64),
 {
     let n_samples = ids.len();
     if n_samples == 0 { return Err("set is empty".to_string()); }
@@ -368,9 +406,9 @@ fn fit<F, L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, calc_impurity:
 
     while depth <= options.max_depth && !next_nodes.is_empty(){
         let mut new_next_nodes: VecDeque<(usize, Vec<usize>)> = VecDeque::new();
-        for (node_id, ids) in next_nodes.drain(..) {
+        for (node_id, mut ids) in next_nodes.drain(..) {
             if let Some((lhs_node, lhs_ids, rhs_node, rhs_ids)) =
-                   best_split(train, labels, &ids, &calc_impurity, &mut nodes[node_id], options, &mut rng)
+                   best_split(train, labels, &mut ids, &calc_impurity, &mut nodes[node_id], options, &mut rng)
             {
                     let lhs_node_id = nodes.len();
                     nodes.push(lhs_node);
