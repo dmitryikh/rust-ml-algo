@@ -1,7 +1,7 @@
 use rand::Rng;
 use rand::distributions::Range;
 
-use cart::{ClsTree, RegTree, CartOptions};
+use tree::{ClsTree, RegTree, CartOptions};
 use matrix::DMatrix;
 use utils::isaac_rng;
 
@@ -162,7 +162,7 @@ impl RegRandomForest {
 mod test {
     use super::*;
     use utils::{accuracy, accuracy_perm, write_csv_col, rmse_error, mae_error};
-    use cart::{SplitCriteria, SplitFeatures};
+    use tree::{SplitCriteria, SplitFeatures};
 
     #[test]
     fn sin() {

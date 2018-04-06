@@ -1,3 +1,5 @@
+mod impurity;
+
 use std::usize;
 use std::collections::VecDeque;
 use rand::Rng;
@@ -5,63 +7,7 @@ use rand;
 
 use matrix::DMatrix;
 use utils::isaac_rng;
-
-pub fn entropy(p_vec: &[f64]) -> f64 {
-    debug_assert!(p_vec.iter().any(|&p| p >= 0.0 && p <= 1.0));
-    p_vec.iter().fold(0.0, |s, &p| s - if p != 0.0 { p * p.log2() } else { 0.0 })
-}
-
-pub fn entropy_bin(p: f64) -> f64 {
-    entropy(&[p, 1.0 - p])
-}
-
-pub fn gini(p_vec: &[f64]) -> f64 {
-    debug_assert!(p_vec.iter().any(|&p| p >= 0.0 && p <= 1.0));
-    p_vec.iter().fold(1.0, |s, &p| s - p.powi(2))
-}
-
-pub fn gini_bin(p: f64) -> f64 {
-    debug_assert!(p >= 0.0 && p <= 1.0);
-    2.0 * p * (1.0 - p)
-}
-
-fn calc_impurity_gini(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
-        (avg, gini_bin(avg))
-    }
-}
-
-fn calc_impurity_entropy(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
-        (avg, entropy_bin(avg))
-    }
-}
-
-fn calc_impurity_mse(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
-        let mse = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).powi(2)) / ids.len() as f64;
-        (avg, mse)
-    }
-}
-
-fn calc_impurity_mae(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
-        let mae = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).abs()) / ids.len() as f64;
-        (avg, mae)
-    }
-}
+use self::impurity::{ImpurityGiniUpdater, ImpurityEntropyUpdater, ImpurityMSEUpdater, ImpurityUpdaterTrait};
 
 #[derive(Debug)]
 struct Node {
@@ -87,7 +33,6 @@ pub enum SplitCriteria {
     Gini,
     Entropy,
     MSE,
-    MAE
 }
 
 #[derive(Debug, Clone)]
@@ -176,12 +121,12 @@ impl ClsTree {
     }
 
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, labels: &[u32], ids: Vec<usize>) -> Result<(), String> {
-        let calc_impurity = match self.options.split_criterion {
-            SplitCriteria::Gini => calc_impurity_gini,
-            SplitCriteria::Entropy => calc_impurity_entropy,
+        let mut impurity_updater: Box<ImpurityUpdaterTrait<Label=u32>> = match self.options.split_criterion {
+            SplitCriteria::Gini => Box::new(ImpurityGiniUpdater::new(labels, &ids)),
+            SplitCriteria::Entropy => Box::new(ImpurityEntropyUpdater::new(labels, &ids)),
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
-        self.nodes = fit(train, labels, ids, calc_impurity, &self.options)?;
+        self.nodes = fit(train, labels, ids, &mut impurity_updater, &self.options)?;
         Ok(())
     }
 
@@ -205,12 +150,11 @@ impl RegTree {
     }
 
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, y: &[f64], ids: Vec<usize>) -> Result<(), String> {
-        let calc_impurity = match self.options.split_criterion {
-            SplitCriteria::MSE => calc_impurity_mse,
-            SplitCriteria::MAE => calc_impurity_mae,
+        let mut impurity_updater: Box<ImpurityUpdaterTrait<Label=f64>> = match self.options.split_criterion {
+            SplitCriteria::MSE => Box::new(ImpurityMSEUpdater::new(y, &ids)),
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
-        self.nodes = fit(train, y, ids, calc_impurity, &self.options)?;
+        self.nodes = fit(train, y, ids, &mut impurity_updater, &self.options)?;
         Ok(())
     }
 
@@ -219,17 +163,17 @@ impl RegTree {
     }
 }
 
-fn best_split<F, L, R>( train: &DMatrix<f64>,
-                        labels: &[L],
-                        ids: &[usize],
-                        calc_impurity: &F,
-                        parent: &mut Node,
-                        options: &CartOptions,
-                        rng: &mut R
-                      )
-    -> Option<(Node, Vec<usize>, Node, Vec<usize>)>
+fn best_split<L, R>( train: &DMatrix<f64>,
+                         labels: &[L],
+                         ids: &mut [usize],
+                         mut const_features: Vec<bool>,
+                         impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>,
+                         parent: &mut Node,
+                         options: &CartOptions,
+                         rng: &mut R
+                       )
+    -> Option<(Node, Vec<usize>, Vec<bool>, Node, Vec<usize>, Vec<bool>)>
     where
-    F: Fn(&[L], &[usize]) -> (f64, f64),
     R: Rng,
 {
     let n_samples = ids.len();
@@ -263,38 +207,47 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
         },
     };
     for f_id in f_ids {
+        if const_features[f_id] { continue; }
         f_vals.clear();
+        // сортируем ids по значению признака f_id
+        ids.sort_unstable_by(|&a, &b| train.get_val(a, f_id).partial_cmp(&train.get_val(b, f_id)).unwrap());
         ids.iter().for_each(|&i| f_vals.push(train.get_val(i, f_id)));
-        // сортируем и уникализируем все значения признака f_id
         // составляем вектор из промежуточных значений
-        f_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        let thresholds = Some(f_vals[0]).into_iter()
-                             .chain(  // включаем первый элемент
-                                 f_vals.windows(2).filter(|w| w[0] != w[1]).map(|w| (w[1] + w[0]) / 2.0)
-                             )
-                             .collect::<Vec<_>>();
-        if thresholds.len() < 2 { continue; }
-        // итерируясь по каждому промежуточному значению составляем lhs и rhs выборки
-        for threshold in thresholds {
-            let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
-            // выборки не могут быть пустыми, т.к. мы разбиваем thresholds, которые лежат внутри диапазона признака
-            debug_assert!(!lhs_ids.is_empty() && !rhs_ids.is_empty());
-            if lhs_ids.len() < options.min_in_leaf || rhs_ids.len() < options.min_in_leaf { continue; }
-            let (lhs_avg, lhs_impurity) = calc_impurity(labels, &lhs_ids);
-            let (rhs_avg, rhs_impurity) = calc_impurity(labels, &rhs_ids);
-            let q = lhs_ids.len() as f64 / n_samples as f64 * lhs_impurity
-                  + rhs_ids.len() as f64 / n_samples as f64 * rhs_impurity;
+        // f_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let min_f_delta = 1.0e-7;
+        // let mut threshold = f_vals[0];
+        let mut pos_prev = 0;
+        // ищем лучшее разбиение
+        impurity_updater.reset(labels, ids);
+        for pos in 1..ids.len() {
+            if f_vals[pos] - f_vals[pos_prev] < min_f_delta { continue; }
+            let threshold = (f_vals[pos] + f_vals[pos_prev]) * 0.5;
+            pos_prev = pos;
+            impurity_updater.update(pos, labels, ids);
+            // let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
+            // // выборки не могут быть пустыми, т.к. мы разбиваем thresholds, которые лежат внутри диапазона признака
+            // debug_assert!(!lhs_ids.is_empty() && !rhs_ids.is_empty());
+            if pos < options.min_in_leaf || (ids.len() - pos) < options.min_in_leaf { continue; }
+            let (lhs_impurity, rhs_impurity) = impurity_updater.impurity_sides();
+            let q = pos as f64 / n_samples as f64 * lhs_impurity
+                  + (ids.len() - pos) as f64 / n_samples as f64 * rhs_impurity;
             if q < parent.impurity_after {
                 parent.rule = Some((f_id, threshold));
                 parent.impurity_after = q;
-                lhs_ids_best = lhs_ids;
-                rhs_ids_best = rhs_ids;
+                lhs_ids_best = ids[0..pos].to_vec();
+                rhs_ids_best = ids[pos..].to_vec();
                 lhs_impurity_best = lhs_impurity;
                 rhs_impurity_best = rhs_impurity;
+                let (lhs_avg, rhs_avg) = impurity_updater.average_sides();
                 lhs_avg_best = lhs_avg;
                 rhs_avg_best = rhs_avg;
                 found_best = true;
             }
+        }
+        if pos_prev == 0 {
+            // Все значения признака равны константе в данной подвыбоке
+            const_features[f_id] = true;
+            //  println!("No!");
         }
     }
     if (!found_best) { return None; }
@@ -311,6 +264,7 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
                 impurity_after: lhs_impurity_best
               },
           lhs_ids_best,
+          const_features.clone(),
           Node{ rule: None,
                 nodes: None,
                 size: rhs_ids_best.len(),
@@ -319,65 +273,66 @@ fn best_split<F, L, R>( train: &DMatrix<f64>,
                 impurity_after: rhs_impurity_best
               },
           rhs_ids_best,
+          const_features,
         ))
 }
 
-fn build_root<F, L>(train: &DMatrix<f64>, labels: &[L], ids: &[usize], calc_impurity: &F) -> Node
-    where
-    F: Fn(&[L], &[usize]) -> (f64, f64)
+fn build_root<L>(train: &DMatrix<f64>, labels: &[L], ids: &[usize], impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>) -> Node
 {
-    let (avg, impurity) = calc_impurity(labels, ids);
+    impurity_updater.reset(labels, ids);
+    let impurity = impurity_updater.impurity();
+    let avg = impurity_updater.average();
     let node = Node{ rule: None, nodes: None, size: ids.len(), avg: avg, impurity: impurity, impurity_after: impurity };
     node
 }
 
-fn split_by_rule(train: &DMatrix<f64>, ids: &[usize], f_id: usize, threshold: f64) -> (Vec<usize>, Vec<usize>) {
-    let mut lhs_ids = Vec::new();
-    let mut rhs_ids = Vec::new();
-    for &i in ids {
-        if train.get_val(i, f_id) <= threshold {
-            lhs_ids.push(i);
-        } else {
-            rhs_ids.push(i);
-        }
-    }
-    (lhs_ids, rhs_ids)
-}
-
-fn fit<F, L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, calc_impurity: F, options: &CartOptions)
+// fn split_by_rule(train: &DMatrix<f64>, ids: &[usize], f_id: usize, threshold: f64) -> (Vec<usize>, Vec<usize>) {
+//     let mut lhs_ids = Vec::new();
+//     let mut rhs_ids = Vec::new();
+//     for &i in ids {
+//         if train.get_val(i, f_id) <= threshold {
+//             lhs_ids.push(i);
+//         } else {
+//             rhs_ids.push(i);
+//         }
+//     }
+//     (lhs_ids, rhs_ids)
+// }
+// 
+fn fit<L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>, options: &CartOptions)
     -> Result<Vec<Node>, String>
-    where
-    F: Fn(&[L], &[usize]) -> (f64, f64)
 {
     let n_samples = ids.len();
     if n_samples == 0 { return Err("set is empty".to_string()); }
     if options.max_depth == 0 {
         return Err(format!("max_depth should be >= 1, got {}", options.max_depth));
     }
-    if train.cols() == 0 {
+    let n_features = train.cols();
+    if n_features == 0 {
         return Err("No features in train (0 columns)".to_string());
     }
     let mut rng = isaac_rng(options.random_seed);
 
     let mut nodes = Vec::new();
-    let mut next_nodes: VecDeque<(usize /*n_id*/, Vec<usize> /*ids*/)> = VecDeque::new();
+    let mut next_nodes: VecDeque<(usize /*n_id*/, Vec<usize> /*ids*/, Vec<bool> /*const_features*/)> = VecDeque::new();
     let mut depth = 2;
-    let node = build_root(train, labels, &ids, &calc_impurity);
+    let mut const_features = vec![false; n_features];
+    let node = build_root(train, labels, &ids, impurity_updater);
     nodes.push(node);
-    next_nodes.push_back((nodes.len() - 1, ids));
+    next_nodes.push_back((nodes.len() - 1, ids, const_features));
 
     while depth <= options.max_depth && !next_nodes.is_empty(){
-        let mut new_next_nodes: VecDeque<(usize, Vec<usize>)> = VecDeque::new();
-        for (node_id, ids) in next_nodes.drain(..) {
-            if let Some((lhs_node, lhs_ids, rhs_node, rhs_ids)) =
-                   best_split(train, labels, &ids, &calc_impurity, &mut nodes[node_id], options, &mut rng)
+        let mut new_next_nodes: VecDeque<(usize, Vec<usize>, Vec<bool>)> = VecDeque::new();
+        for (node_id, mut ids, mut const_features) in next_nodes.drain(..) {
+            if let Some((lhs_node, lhs_ids, lhs_const_features, rhs_node, rhs_ids, rhs_const_features)) =
+                   best_split(train, labels, &mut ids, const_features, impurity_updater, &mut nodes[node_id], options, &mut rng)
             {
                     let lhs_node_id = nodes.len();
                     nodes.push(lhs_node);
-                    new_next_nodes.push_back((lhs_node_id, lhs_ids));
+                    new_next_nodes.push_back((lhs_node_id, lhs_ids, lhs_const_features));
                     let rhs_node_id = nodes.len();
                     nodes.push(rhs_node);
-                    new_next_nodes.push_back((rhs_node_id, rhs_ids));
+                    new_next_nodes.push_back((rhs_node_id, rhs_ids, rhs_const_features));
                     nodes[node_id].nodes = Some((lhs_node_id, rhs_node_id));
             }
         }
@@ -409,22 +364,6 @@ fn predict_avg(nodes: &Vec<Node>, test: &DMatrix<f64>) -> Result<Vec<f64>, Strin
 mod test {
     use super::*;
     use utils::{accuracy, accuracy_perm, write_csv_col, rmse_error, mae_error};
-
-    #[test]
-    fn gini_impurity_test() {
-        assert_eq!(gini_bin(0.0), 0.0);
-        assert_eq!(gini_bin(1.0), 0.0);
-        assert_eq!(gini_bin(0.5), 0.5);
-        assert!((gini_bin(0.7) - 0.42).abs() < 1.0e-6);
-    }
-
-    #[test]
-    fn entropy_test() {
-        assert_eq!(entropy_bin(0.0), 0.0);
-        assert_eq!(entropy_bin(1.0), 0.0);
-        assert_eq!(entropy_bin(0.5), 1.0);
-        assert!((entropy_bin(0.7) - 0.88129).abs() < 1.0e-5);
-    }
 
     #[test]
     fn blobs() {
@@ -504,7 +443,7 @@ mod test {
         let train_x: DMatrix<f64> = DMatrix::from_csv("data/sin.csv", 1, ',', Some(&[0])).unwrap();
         let train_y: DMatrix<f64> = DMatrix::from_csv("data/sin.csv", 1, ',', Some(&[1])).unwrap();
         cart.fit(&train_x, train_y.data()).unwrap();
-        // println!("Nodes: {:?}", cart.nodes);
+        println!("Nodes: {:?}", cart.nodes);
         let pred_y = cart.predict(&train_x).unwrap();
         // write_csv_col("output/sin.csv", &pred_y, None).unwrap();
         let rmse = rmse_error(train_y.data(), &pred_y);
