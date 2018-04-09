@@ -152,6 +152,31 @@ pub fn isaac_rng(seed: u64) -> Isaac64Rng {
     Isaac64Rng::from_seed(&[seed])
 }
 
+pub fn precision_recall(label: &[u32], predict: &[u32]) -> (f64 /*precision*/, f64 /*recall*/) {
+    #[allow(non_snake_case)]
+    let (mut TP, mut FN, mut FP, mut TN) = (0, 0, 0, 0);
+    label.iter().zip(predict.iter()).for_each(|(&l, &p)| {
+        if l == 1 {
+            if p == 1 { TP += 1; }
+            else { FN += 1; }
+        } else {
+            if p == 1 { FP += 1; }
+            else { TN += 1; }
+        }
+    });
+    let precision = if TP + FP == 0 {
+        0.0
+    } else {
+        TP as f64 / (TP + FP) as f64
+    };
+    let recall = if TP + FN == 0 {
+        0.0
+    } else {
+        TP as f64 / (TP + FN) as f64
+    };
+    (precision, recall)
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -230,4 +255,16 @@ fn rmse_cases() {
 fn mae_cases() {
     assert_eq!(mae_error(&[0.0, 1.0, 0.0], &[0.0, 0.0, 0.0]), 1.0 / 3.0);
     assert_eq!(mae_error(&[1.0, 2.0, 10.0], &[1.0, 2.0, 10.0]), 0.0);
+}
+
+#[test]
+fn precision_recall_cases() {
+    assert_eq!(precision_recall(&[], &[]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[0], &[0]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[1], &[1]), (1.0, 1.0));
+    assert_eq!(precision_recall(&[1], &[0]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[0, 0], &[0, 0]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[1, 1], &[0, 0]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[0, 1], &[1, 0]), (0.0, 0.0));
+    assert_eq!(precision_recall(&[1, 0, 1, 0, 0], &[0, 0, 1, 0, 1]), (0.5, 0.5));
 }
