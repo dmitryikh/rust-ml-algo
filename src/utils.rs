@@ -5,6 +5,7 @@ use std::fmt;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::ops::{Add, Sub, Mul};
+use std::cmp;
 use rand::{Rng, Isaac64Rng, SeedableRng};
 use rand;
 
@@ -186,6 +187,25 @@ pub fn f1_score(label: &[u32], predict: &[u32]) -> f64 {
     }
 }
 
+pub fn logloss_error(label: &[u32], predict: &[f64]) -> f64 {
+    let len = cmp::min(predict.len(), label.len());
+    if len == 0 { return 0.0; }
+    let eps = 1.0e-10;
+    label.iter().zip(predict.iter()).fold(0.0, |sum, (&l, &p)| {
+        let mut p = p;
+        if p > 1.0 - eps {
+            p = 1.0 - eps;
+        } else if p < eps {
+            p = eps;
+        }
+        if l == 0 {
+            sum - (1.0 - p).ln()
+        } else  {
+            sum - p.ln()
+        }
+    }) / len as f64
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -288,4 +308,12 @@ fn f1_score_cases() {
     assert_eq!(f1_score(&[1, 1], &[0, 0]), 0.0);
     assert_eq!(f1_score(&[0, 1], &[1, 0]), 0.0);
     assert_eq!(f1_score(&[1, 0, 1, 0, 0], &[0, 0, 1, 0, 1]), 0.5);
+}
+
+#[test]
+fn logloss_error_cases() {
+    assert!((logloss_error(&[0], &[0.0]) - 0.0).abs() < 1e-7);
+    assert!((logloss_error(&[1], &[1.0]) - 0.0).abs() < 1e-7);
+    assert_eq!(logloss_error(&[], &[]), 0.0);
+    assert!((logloss_error(&[1, 0, 1, 0, 0], &[0.35, 0.15, 0.8, 0.6, 0.8]) - 0.79224264).abs() < 1e-7);
 }
