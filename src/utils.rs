@@ -177,6 +177,15 @@ pub fn precision_recall(label: &[u32], predict: &[u32]) -> (f64 /*precision*/, f
     (precision, recall)
 }
 
+pub fn f1_score(label: &[u32], predict: &[u32]) -> f64 {
+    let (precision, recall) = precision_recall(label, predict);
+    if precision == 0.0 || recall == 0.0 {
+        0.0
+    } else {
+        2.0 * (precision * recall) / (precision + recall)
+    }
+}
+
 #[test]
 fn read_csv() {
     let mut counter = 0;
@@ -267,4 +276,16 @@ fn precision_recall_cases() {
     assert_eq!(precision_recall(&[1, 1], &[0, 0]), (0.0, 0.0));
     assert_eq!(precision_recall(&[0, 1], &[1, 0]), (0.0, 0.0));
     assert_eq!(precision_recall(&[1, 0, 1, 0, 0], &[0, 0, 1, 0, 1]), (0.5, 0.5));
+}
+
+#[test]
+fn f1_score_cases() {
+    assert_eq!(f1_score(&[], &[]), 0.0);
+    assert_eq!(f1_score(&[0], &[0]), 0.0);
+    assert_eq!(f1_score(&[1], &[1]), 1.0);
+    assert_eq!(f1_score(&[1], &[0]), 0.0);
+    assert_eq!(f1_score(&[0, 0], &[0, 0]), 0.0);
+    assert_eq!(f1_score(&[1, 1], &[0, 0]), 0.0);
+    assert_eq!(f1_score(&[0, 1], &[1, 0]), 0.0);
+    assert_eq!(f1_score(&[1, 0, 1, 0, 0], &[0, 0, 1, 0, 1]), 0.5);
 }
