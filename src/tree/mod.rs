@@ -1,3 +1,5 @@
+mod impurity;
+
 use std::usize;
 use std::collections::VecDeque;
 use rand::Rng;
@@ -5,90 +7,7 @@ use rand;
 
 use matrix::DMatrix;
 use utils::isaac_rng;
-
-pub fn entropy(p_vec: &[f64]) -> f64 {
-    debug_assert!(p_vec.iter().any(|&p| p >= 0.0 && p <= 1.0));
-    p_vec.iter().fold(0.0, |s, &p| s - if p != 0.0 { p * p.log2() } else { 0.0 })
-}
-
-pub fn entropy_bin(p: f64) -> f64 {
-    entropy(&[p, 1.0 - p])
-}
-
-pub fn gini(p_vec: &[f64]) -> f64 {
-    debug_assert!(p_vec.iter().any(|&p| p >= 0.0 && p <= 1.0));
-    p_vec.iter().fold(1.0, |s, &p| s - p.powi(2))
-}
-
-pub fn gini_bin(p: f64) -> f64 {
-    debug_assert!(p >= 0.0 && p <= 1.0);
-    2.0 * p * (1.0 - p)
-}
-
-// fn calc_impurity_gini(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-//     if ids.is_empty() {
-//         (0.0, 0.0)
-//     } else {
-//         let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
-//         (avg, gini_bin(avg))
-//     }
-// }
-
-fn calc_impurity_gini(labels: &[u32], ids: &[usize], pos: usize) -> (f64 /*lhs_avg*/, f64 /*lhs_impurity*/,
-                                                         f64 /*rhs_avg*/, f64 /*rhs_impurity*/) {
-    debug_assert!(pos > 0 && pos < ids.len());
-
-    let lhs_avg = ids[0..pos].iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / pos as f64;
-    let rhs_avg = ids[pos..].iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / (ids.len() - pos) as f64;
-    (lhs_avg, gini_bin(lhs_avg), rhs_avg, gini_bin(rhs_avg))
-}
-
-fn calc_impurity_entropy(labels: &[u32], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + labels[i] as f64) / ids.len() as f64;
-        (avg, entropy_bin(avg))
-    }
-}
-
-// fn calc_impurity_mse(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-//     if ids.is_empty() {
-//         (0.0, 0.0)
-//     } else {
-//         let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
-//         let mse = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).powi(2)) / ids.len() as f64;
-//         (avg, mse)
-//     }
-// }
-
-fn calc_impurity_mse(y: &[f64], ids: &[usize], pos: usize) -> (f64 /*lhs_avg*/, f64 /*lhs_impurity*/,
-                                                               f64 /*rhs_avg*/, f64 /*rhs_impurity*/) {
-    debug_assert!(pos < ids.len());
-    let (lhs_avg, lhs_mse) = if pos == 0 {
-        (0.0, 0.0)
-    } else {
-        let lhs_avg = ids[0..pos].iter().fold(0.0, |sum, &i| sum + y[i]) / pos as f64;
-        let lhs_mse = ids[0..pos].iter().fold(0.0, |sum, &i| sum + (y[i] - lhs_avg).powi(2)) / pos as f64;
-        (lhs_avg, lhs_mse)
-    };
-
-
-    let rhs_avg = ids[pos..].iter().fold(0.0, |sum, &i| sum + y[i]) / (ids.len() - pos) as f64;
-    let rhs_mse = ids[pos..].iter().fold(0.0, |sum, &i| sum + (y[i] - rhs_avg).powi(2)) / (ids.len() - pos) as f64;
-
-    (lhs_avg, lhs_mse, rhs_avg, rhs_mse)
-}
-
-fn calc_impurity_mae(y: &[f64], ids: &[usize]) -> (f64 /*avg*/, f64 /*impurity*/) {
-    if ids.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let avg = ids.iter().fold(0.0, |sum, &i| sum + y[i]) / ids.len() as f64;
-        let mae = ids.iter().fold(0.0, |sum, &i| sum + (y[i] - avg).abs()) / ids.len() as f64;
-        (avg, mae)
-    }
-}
+use self::impurity::{calc_impurity_gini, calc_impurity_mse};
 
 #[derive(Debug)]
 struct Node {
@@ -246,122 +165,6 @@ impl RegTree {
     }
 }
 
-struct AverageUpdater<'a, L: 'a> {
-    lhs_sum: f64,
-    sum: f64,
-    labels: &'a [L],
-    pos: usize,
-}
-
-impl<'a, L> AverageUpdater<'a, L>
-    where f64: From<L>,
-    L: Clone,
-{
-    fn new(labels: &'a [L]) -> Self {
-        AverageUpdater { lhs_sum: 0.0,
-                         sum: labels.iter().fold(0.0, |sum, l| sum + f64::from(l.clone())),
-                         labels: labels,
-                         pos: 0,
-                       }
-    }
-
-    fn update(&mut self, new_pos: usize) {
-        self.lhs_sum += self.labels[self.pos..new_pos].iter()
-                            .fold(0.0, |sum, l| sum + f64::from(l.clone()));
-        self.pos = new_pos;
-    }
-
-    fn average(&self) -> f64 {
-        self.sum / self.labels.len() as f64
-    }
-
-    fn average_sides(&self) -> (f64, f64) {
-        let lhs_avg = if self.pos == 0 {
-                          0.0
-                      } else {
-                          self.lhs_sum / self.pos as f64
-                      };
-        let rhs_avg = (self.sum - self.lhs_sum) / (self.labels.len() - self.pos) as f64;
-        (lhs_avg, rhs_avg)
-    }
-}
-
-trait ImpurityUpdaterTrait<'a> {
-    type Label;
-
-    fn new(labels: &'a [Self::Label]) -> Self;
-    fn update(&mut self, new_pos: usize);
-    fn impurity(&self) -> f64;
-    fn impurity_sides(&self) -> (f64, f64);
-}
-
-struct ImpurityMSEUpdater<'a> {
-    avg_updater: AverageUpdater<'a, f64>,
-    lhs_sum_sq: f64,
-    sum_sq: f64,
-}
-
-impl<'a> ImpurityUpdaterTrait<'a> for ImpurityMSEUpdater<'a> {
-    type Label = f64;
-
-    fn new(labels: &'a [Self::Label]) -> Self {
-        ImpurityMSEUpdater{ avg_updater: AverageUpdater::new(labels),
-                            lhs_sum_sq: 0.0,
-                            sum_sq: labels.iter().fold(0.0, |sq_sum, l| sq_sum + l.powi(2)),
-                          }
-    }
-
-    fn update(&mut self, new_pos: usize) {
-        let labels = self.avg_updater.labels;
-        let pos = self.avg_updater.pos;
-        self.lhs_sum_sq += labels[pos..new_pos].iter()
-                            .fold(0.0, |sq_sum, l| sq_sum + l.powi(2));
-        self.avg_updater.update(new_pos);
-    }
-
-    fn impurity(&self) -> f64 {
-        self.sum_sq / self.avg_updater.labels.len() as f64 - self.avg_updater.average().powi(2)
-    }
-
-    fn impurity_sides(&self) -> (f64, f64) {
-        let (lhs_avg, rhs_avg) = self.avg_updater.average_sides();
-        let pos = self.avg_updater.pos;
-        let lhs_mse = if pos == 0 {
-                          0.0
-                      } else {
-                          self.lhs_sum_sq / pos as f64 - lhs_avg.powi(2)
-                      };
-        let rhs_mse = (self.sum_sq - self.lhs_sum_sq) / (self.avg_updater.labels.len() - pos) as f64 - rhs_avg.powi(2);
-        (lhs_mse, rhs_mse)
-    }
-}
-
-struct ImpurityGiniUpdater<'a> {
-    avg_updater: AverageUpdater<'a, u32>,
-}
-
-impl<'a> ImpurityUpdaterTrait<'a> for ImpurityGiniUpdater<'a> {
-    type Label = u32;
-
-    fn new(labels: &'a [Self::Label]) -> Self {
-        ImpurityGiniUpdater{ avg_updater: AverageUpdater::new(labels) }
-    }
-
-    fn update(&mut self, new_pos: usize) {
-        self.avg_updater.update(new_pos);
-    }
-
-    fn impurity(&self) -> f64 {
-        let avg = self.avg_updater.average();
-        gini_bin(avg)
-    }
-
-    fn impurity_sides(&self) -> (f64, f64) {
-        let (lhs_avg, rhs_avg) = self.avg_updater.average_sides();
-        (gini_bin(lhs_avg), gini_bin(rhs_avg))
-    }
-}
-
 fn best_split<F, L, R>( train: &DMatrix<f64>,
                         labels: &[L],
                         ids: &mut [usize],
@@ -485,19 +288,19 @@ fn build_root<F, L>(train: &DMatrix<f64>, labels: &[L], ids: &[usize], calc_impu
     node
 }
 
-fn split_by_rule(train: &DMatrix<f64>, ids: &[usize], f_id: usize, threshold: f64) -> (Vec<usize>, Vec<usize>) {
-    let mut lhs_ids = Vec::new();
-    let mut rhs_ids = Vec::new();
-    for &i in ids {
-        if train.get_val(i, f_id) <= threshold {
-            lhs_ids.push(i);
-        } else {
-            rhs_ids.push(i);
-        }
-    }
-    (lhs_ids, rhs_ids)
-}
-
+// fn split_by_rule(train: &DMatrix<f64>, ids: &[usize], f_id: usize, threshold: f64) -> (Vec<usize>, Vec<usize>) {
+//     let mut lhs_ids = Vec::new();
+//     let mut rhs_ids = Vec::new();
+//     for &i in ids {
+//         if train.get_val(i, f_id) <= threshold {
+//             lhs_ids.push(i);
+//         } else {
+//             rhs_ids.push(i);
+//         }
+//     }
+//     (lhs_ids, rhs_ids)
+// }
+// 
 fn fit<F, L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, calc_impurity: F, options: &CartOptions)
     -> Result<Vec<Node>, String>
     where
@@ -563,22 +366,6 @@ fn predict_avg(nodes: &Vec<Node>, test: &DMatrix<f64>) -> Result<Vec<f64>, Strin
 mod test {
     use super::*;
     use utils::{accuracy, accuracy_perm, write_csv_col, rmse_error, mae_error};
-
-    #[test]
-    fn gini_impurity_test() {
-        assert_eq!(gini_bin(0.0), 0.0);
-        assert_eq!(gini_bin(1.0), 0.0);
-        assert_eq!(gini_bin(0.5), 0.5);
-        assert!((gini_bin(0.7) - 0.42).abs() < 1.0e-6);
-    }
-
-    #[test]
-    fn entropy_test() {
-        assert_eq!(entropy_bin(0.0), 0.0);
-        assert_eq!(entropy_bin(1.0), 0.0);
-        assert_eq!(entropy_bin(0.5), 1.0);
-        assert!((entropy_bin(0.7) - 0.88129).abs() < 1.0e-5);
-    }
 
     #[test]
     fn blobs() {
@@ -664,45 +451,5 @@ mod test {
         let rmse = rmse_error(train_y.data(), &pred_y);
         let mae = mae_error(train_y.data(), &pred_y);
         println!("RMSE = {}, MAE = {}", rmse, mae);
-    }
-
-    #[test]
-    fn impurity_mse_updater_cases() {
-        let labels = [0.0, 0.0, 0.0, 1.0, 2.0, 0.0];
-        let mut mse = ImpurityMSEUpdater::new(&labels);
-        assert_eq!(mse.impurity(), 14.0 / 24.0);
-        assert_eq!(mse.impurity_sides(), (0.0, 14.0 / 24.0));
-        mse.update(0);
-        assert_eq!(mse.impurity_sides(), (0.0, 14.0 / 24.0));
-        mse.update(1);
-        assert_eq!(mse.impurity_sides(), (0.0, 16.0 / 25.0));
-        mse.update(1);
-        assert_eq!(mse.impurity_sides(), (0.0, 16.0 / 25.0));
-        mse.update(2);
-        assert_eq!(mse.impurity_sides(), (0.0, 11.0 / 16.0));
-        mse.update(4);
-        assert_eq!(mse.impurity_sides(), (3.0 / 16.0, 1.0));
-        mse.update(5);
-        assert_eq!(mse.impurity_sides(), (16.0 / 25.0, 0.0));
-    }
-
-    #[test]
-    fn impurity_gini_updater_cases() {
-        let labels = [0, 0, 0, 1, 2, 0];
-        let mut gini = ImpurityGiniUpdater::new(&labels);
-        assert_eq!(gini.impurity(), gini_bin(0.5));
-        assert_eq!(gini.impurity_sides(), (0.0, gini_bin(0.5)));
-        gini.update(0);
-        assert_eq!(gini.impurity_sides(), (0.0, gini_bin(0.5)));
-        gini.update(1);
-        assert_eq!(gini.impurity_sides(), (0.0, gini_bin(0.6)));
-        gini.update(1);
-        assert_eq!(gini.impurity_sides(), (0.0, gini_bin(0.6)));
-        gini.update(2);
-        assert_eq!(gini.impurity_sides(), (0.0, gini_bin(0.75)));
-        gini.update(4);
-        assert_eq!(gini.impurity_sides(), (gini_bin(0.25), gini_bin(1.0)));
-        gini.update(5);
-        assert_eq!(gini.impurity_sides(), (gini_bin(0.6), 0.0));
     }
 }
