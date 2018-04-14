@@ -1,7 +1,7 @@
 use rand::Rng;
 use rand::distributions::Range;
 
-use cart::{ClsTree, RegTree, CartOptions};
+use tree::{ClsTree, RegTree, CartOptions};
 use matrix::DMatrix;
 use utils::isaac_rng;
 

@@ -10,4 +10,4 @@ pub mod agg;
 pub mod dbscan;
 pub mod mshift;
 pub mod tree;
-// pub mod rforest;
+pub mod rforest;

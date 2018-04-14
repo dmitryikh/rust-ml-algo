@@ -7,7 +7,7 @@ use rand;
 
 use matrix::DMatrix;
 use utils::isaac_rng;
-use self::impurity::{ImpurityGiniUpdater, ImpurityMSEUpdater, ImpurityUpdaterTrait};
+use self::impurity::{ImpurityGiniUpdater, ImpurityEntropyUpdater, ImpurityMSEUpdater, ImpurityUpdaterTrait};
 
 #[derive(Debug)]
 struct Node {
@@ -33,7 +33,6 @@ pub enum SplitCriteria {
     Gini,
     Entropy,
     MSE,
-    MAE
 }
 
 #[derive(Debug, Clone)]
@@ -122,12 +121,12 @@ impl ClsTree {
     }
 
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, labels: &[u32], ids: Vec<usize>) -> Result<(), String> {
-        let impurity_updater = match self.options.split_criterion {
-            SplitCriteria::Gini => ImpurityGiniUpdater::new(labels, &ids),
-            // SplitCriteria::Entropy => calc_impurity_entropy,
+        let mut impurity_updater: Box<ImpurityUpdaterTrait<Label=u32>> = match self.options.split_criterion {
+            SplitCriteria::Gini => Box::new(ImpurityGiniUpdater::new(labels, &ids)),
+            SplitCriteria::Entropy => Box::new(ImpurityEntropyUpdater::new(labels, &ids)),
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
-        self.nodes = fit(train, labels, ids, &impurity_updater, &self.options)?;
+        self.nodes = fit(train, labels, ids, &mut impurity_updater, &self.options)?;
         Ok(())
     }
 
@@ -151,12 +150,11 @@ impl RegTree {
     }
 
     pub fn fit_with_ids(&mut self, train: &DMatrix<f64>, y: &[f64], ids: Vec<usize>) -> Result<(), String> {
-        let impurity_updater = match self.options.split_criterion {
-            SplitCriteria::MSE => ImpurityMSEUpdater::new(y, &ids),
-            // SplitCriteria::MAE => calc_impurity_mae,
+        let mut impurity_updater: Box<ImpurityUpdaterTrait<Label=f64>> = match self.options.split_criterion {
+            SplitCriteria::MSE => Box::new(ImpurityMSEUpdater::new(y, &ids)),
             _ => { return Err(format!("Wrong SplitCriteria: {:?}", self.options.split_criterion)); },
         };
-        self.nodes = fit(train, y, ids, &impurity_updater, &self.options)?;
+        self.nodes = fit(train, y, ids, &mut impurity_updater, &self.options)?;
         Ok(())
     }
 
@@ -165,17 +163,10 @@ impl RegTree {
     }
 }
 
-fn get_impurity_updater<L> ( labels: &[L],
-                             ids: &'a mut [usize],
-                             options: &CartOptions,
-                           ) {
-    
-}
-
-fn best_split<'a, L, R>( train: &DMatrix<f64>,
+fn best_split<L, R>( train: &DMatrix<f64>,
                          labels: &[L],
-                         ids: &'a mut [usize],
-                         impurity_updater: &'a ImpurityUpdaterTrait<'a, Label=L>,
+                         ids: &mut [usize],
+                         impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>,
                          parent: &mut Node,
                          options: &CartOptions,
                          rng: &mut R
@@ -236,12 +227,12 @@ fn best_split<'a, L, R>( train: &DMatrix<f64>,
         //                      );
         // итерируясь по каждому промежуточному значению составляем lhs и rhs выборки
         // for threshold in thresholds {
-        impurity_updater.reset(ids);
+        impurity_updater.reset(labels, ids);
         for pos in 1..ids.len() {
             if f_vals[pos] - f_vals[pos_prev] < min_f_delta { continue; }
             let threshold = (f_vals[pos] + f_vals[pos_prev]) * 0.5;
             pos_prev = pos;
-            impurity_updater.update(pos);
+            impurity_updater.update(pos, labels, ids);
             // let (lhs_ids, rhs_ids) = split_by_rule(train, ids, f_id, threshold);
             // // выборки не могут быть пустыми, т.к. мы разбиваем thresholds, которые лежат внутри диапазона признака
             // debug_assert!(!lhs_ids.is_empty() && !rhs_ids.is_empty());
@@ -288,9 +279,9 @@ fn best_split<'a, L, R>( train: &DMatrix<f64>,
         ))
 }
 
-fn build_root<'a, L>(train: &DMatrix<f64>, labels: &[L], ids: &'a [usize], impurity_updater: &'a ImpurityUpdaterTrait<'a, Label=L>) -> Node
+fn build_root<L>(train: &DMatrix<f64>, labels: &[L], ids: &[usize], impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>) -> Node
 {
-    impurity_updater.reset(ids);
+    impurity_updater.reset(labels, ids);
     let impurity = impurity_updater.impurity();
     let avg = impurity_updater.average();
     let node = Node{ rule: None, nodes: None, size: ids.len(), avg: avg, impurity: impurity, impurity_after: impurity };
@@ -310,7 +301,7 @@ fn build_root<'a, L>(train: &DMatrix<f64>, labels: &[L], ids: &'a [usize], impur
 //     (lhs_ids, rhs_ids)
 // }
 // 
-fn fit<L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, impurity_updater: &ImpurityUpdaterTrait<Label=L>, options: &CartOptions)
+fn fit<L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>, options: &CartOptions)
     -> Result<Vec<Node>, String>
 {
     let n_samples = ids.len();
@@ -452,7 +443,7 @@ mod test {
         let train_x: DMatrix<f64> = DMatrix::from_csv("data/sin.csv", 1, ',', Some(&[0])).unwrap();
         let train_y: DMatrix<f64> = DMatrix::from_csv("data/sin.csv", 1, ',', Some(&[1])).unwrap();
         cart.fit(&train_x, train_y.data()).unwrap();
-        // println!("Nodes: {:?}", cart.nodes);
+        println!("Nodes: {:?}", cart.nodes);
         let pred_y = cart.predict(&train_x).unwrap();
         // write_csv_col("output/sin.csv", &pred_y, None).unwrap();
         let rmse = rmse_error(train_y.data(), &pred_y);
