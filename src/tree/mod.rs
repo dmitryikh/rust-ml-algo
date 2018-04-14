@@ -166,12 +166,13 @@ impl RegTree {
 fn best_split<L, R>( train: &DMatrix<f64>,
                          labels: &[L],
                          ids: &mut [usize],
+                         mut const_features: Vec<bool>,
                          impurity_updater: &mut Box<ImpurityUpdaterTrait<Label=L>>,
                          parent: &mut Node,
                          options: &CartOptions,
                          rng: &mut R
                        )
-    -> Option<(Node, Vec<usize>, Node, Vec<usize>)>
+    -> Option<(Node, Vec<usize>, Vec<bool>, Node, Vec<usize>, Vec<bool>)>
     where
     R: Rng,
 {
@@ -206,6 +207,7 @@ fn best_split<L, R>( train: &DMatrix<f64>,
         },
     };
     for f_id in f_ids {
+        if const_features[f_id] { continue; }
         f_vals.clear();
         // сортируем ids по значению признака f_id
         ids.sort_unstable_by(|&a, &b| train.get_val(a, f_id).partial_cmp(&train.get_val(b, f_id)).unwrap());
@@ -215,18 +217,7 @@ fn best_split<L, R>( train: &DMatrix<f64>,
         let min_f_delta = 1.0e-7;
         // let mut threshold = f_vals[0];
         let mut pos_prev = 0;
-        // let thresholds = Some(f_vals[0]).into_iter()
-        //                      .chain(  // включаем первый элемент
-        //                         f_vals[1..].iter().filter(|&&w|
-        //                         {
-        //                             if w > last_element {
-        //                                 last_element = w;
-        //                                 return true;
-        //                             } else { return false; }
-        //                         }).windows(2).map(|w| (w[1] + w[0]) / 2.0)
-        //                      );
-        // итерируясь по каждому промежуточному значению составляем lhs и rhs выборки
-        // for threshold in thresholds {
+        // ищем лучшее разбиение
         impurity_updater.reset(labels, ids);
         for pos in 1..ids.len() {
             if f_vals[pos] - f_vals[pos_prev] < min_f_delta { continue; }
@@ -253,6 +244,11 @@ fn best_split<L, R>( train: &DMatrix<f64>,
                 found_best = true;
             }
         }
+        if pos_prev == 0 {
+            // Все значения признака равны константе в данной подвыбоке
+            const_features[f_id] = true;
+            //  println!("No!");
+        }
     }
     if (!found_best) { return None; }
     debug_assert!(parent.impurity > parent.impurity_after);  // рассчитываем только на улучшение!
@@ -268,6 +264,7 @@ fn best_split<L, R>( train: &DMatrix<f64>,
                 impurity_after: lhs_impurity_best
               },
           lhs_ids_best,
+          const_features.clone(),
           Node{ rule: None,
                 nodes: None,
                 size: rhs_ids_best.len(),
@@ -276,6 +273,7 @@ fn best_split<L, R>( train: &DMatrix<f64>,
                 impurity_after: rhs_impurity_best
               },
           rhs_ids_best,
+          const_features,
         ))
 }
 
@@ -309,30 +307,32 @@ fn fit<L>(train: &DMatrix<f64>, labels: &[L], ids: Vec<usize>, impurity_updater:
     if options.max_depth == 0 {
         return Err(format!("max_depth should be >= 1, got {}", options.max_depth));
     }
-    if train.cols() == 0 {
+    let n_features = train.cols();
+    if n_features == 0 {
         return Err("No features in train (0 columns)".to_string());
     }
     let mut rng = isaac_rng(options.random_seed);
 
     let mut nodes = Vec::new();
-    let mut next_nodes: VecDeque<(usize /*n_id*/, Vec<usize> /*ids*/)> = VecDeque::new();
+    let mut next_nodes: VecDeque<(usize /*n_id*/, Vec<usize> /*ids*/, Vec<bool> /*const_features*/)> = VecDeque::new();
     let mut depth = 2;
+    let mut const_features = vec![false; n_features];
     let node = build_root(train, labels, &ids, impurity_updater);
     nodes.push(node);
-    next_nodes.push_back((nodes.len() - 1, ids));
+    next_nodes.push_back((nodes.len() - 1, ids, const_features));
 
     while depth <= options.max_depth && !next_nodes.is_empty(){
-        let mut new_next_nodes: VecDeque<(usize, Vec<usize>)> = VecDeque::new();
-        for (node_id, mut ids) in next_nodes.drain(..) {
-            if let Some((lhs_node, lhs_ids, rhs_node, rhs_ids)) =
-                   best_split(train, labels, &mut ids, impurity_updater, &mut nodes[node_id], options, &mut rng)
+        let mut new_next_nodes: VecDeque<(usize, Vec<usize>, Vec<bool>)> = VecDeque::new();
+        for (node_id, mut ids, mut const_features) in next_nodes.drain(..) {
+            if let Some((lhs_node, lhs_ids, lhs_const_features, rhs_node, rhs_ids, rhs_const_features)) =
+                   best_split(train, labels, &mut ids, const_features, impurity_updater, &mut nodes[node_id], options, &mut rng)
             {
                     let lhs_node_id = nodes.len();
                     nodes.push(lhs_node);
-                    new_next_nodes.push_back((lhs_node_id, lhs_ids));
+                    new_next_nodes.push_back((lhs_node_id, lhs_ids, lhs_const_features));
                     let rhs_node_id = nodes.len();
                     nodes.push(rhs_node);
-                    new_next_nodes.push_back((rhs_node_id, rhs_ids));
+                    new_next_nodes.push_back((rhs_node_id, rhs_ids, rhs_const_features));
                     nodes[node_id].nodes = Some((lhs_node_id, rhs_node_id));
             }
         }
