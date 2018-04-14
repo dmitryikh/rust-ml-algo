@@ -105,26 +105,40 @@ impl<'a, L> AverageUpdater<'a, L>
     }
 }
 
-trait ImpurityUpdaterTrait<'a> {
+pub trait ImpurityUpdaterTrait<'a> {
     type Label;
 
-    fn new(labels: &'a [Self::Label], ids: &'a [usize]) -> Self;
+    fn new(labels: &'a [Self::Label], ids: &'a [usize]) -> Self
+        where Self: Sized;
     fn reset(&mut self, ids: &'a [usize]);
     fn update(&mut self, new_pos: usize);
     fn impurity(&self) -> f64;
+    fn average(&self) -> f64;
     fn impurity_sides(&self) -> (f64, f64);
+    fn average_sides(&self) -> (f64, f64);
 }
 
-struct ImpurityMSEUpdater<'a> {
+pub struct ImpurityMSEUpdater<'a> {
     avg_updater: AverageUpdater<'a, f64>,
     lhs_sum_sq: f64,
     sum_sq: f64,
 }
 
+// impl<'a> ImpurityMSEUpdater<'a> {
+//     pub fn new(labels: &'a [f64], ids: &'a [usize]) -> Self {
+//         let mut s = ImpurityMSEUpdater{ avg_updater: AverageUpdater::new(labels, ids),
+//                                         lhs_sum_sq: 0.0,
+//                                         sum_sq: 0.0,
+//                                       };
+//         s.reset(ids);
+//         s
+//     }
+// }
+
 impl<'a> ImpurityUpdaterTrait<'a> for ImpurityMSEUpdater<'a> {
     type Label = f64;
 
-    fn new(labels: &'a [Self::Label], ids: &'a [usize]) -> Self {
+    fn new(labels: &'a [f64], ids: &'a [usize]) -> Self {
         let mut s = ImpurityMSEUpdater{ avg_updater: AverageUpdater::new(labels, ids),
                                         lhs_sum_sq: 0.0,
                                         sum_sq: 0.0,
@@ -152,6 +166,10 @@ impl<'a> ImpurityUpdaterTrait<'a> for ImpurityMSEUpdater<'a> {
         self.sum_sq / self.avg_updater.labels.len() as f64 - self.avg_updater.average().powi(2)
     }
 
+    fn average(&self) -> f64 {
+        self.avg_updater.average()
+    }
+
     fn impurity_sides(&self) -> (f64, f64) {
         let (lhs_avg, rhs_avg) = self.avg_updater.average_sides();
         let pos = self.avg_updater.pos;
@@ -163,16 +181,28 @@ impl<'a> ImpurityUpdaterTrait<'a> for ImpurityMSEUpdater<'a> {
         let rhs_mse = (self.sum_sq - self.lhs_sum_sq) / (self.avg_updater.ids.len() - pos) as f64 - rhs_avg.powi(2);
         (lhs_mse, rhs_mse)
     }
+
+    fn average_sides(&self) -> (f64, f64) {
+        self.avg_updater.average_sides()
+    }
 }
 
-struct ImpurityGiniUpdater<'a> {
+pub struct ImpurityGiniUpdater<'a> {
     avg_updater: AverageUpdater<'a, u32>,
 }
+
+// impl<'a> ImpurityGiniUpdater<'a> {
+//     pub fn new(labels: &'a [u32], ids: &'a [usize]) -> Self {
+//         let mut s = ImpurityGiniUpdater{ avg_updater: AverageUpdater::new(labels, ids) };
+//         s.reset(ids);
+//         s
+//     }
+// }
 
 impl<'a> ImpurityUpdaterTrait<'a> for ImpurityGiniUpdater<'a> {
     type Label = u32;
 
-    fn new(labels: &'a [Self::Label], ids: &'a [usize]) -> Self {
+    fn new(labels: &'a [u32], ids: &'a [usize]) -> Self {
         let mut s = ImpurityGiniUpdater{ avg_updater: AverageUpdater::new(labels, ids) };
         s.reset(ids);
         s
@@ -191,9 +221,17 @@ impl<'a> ImpurityUpdaterTrait<'a> for ImpurityGiniUpdater<'a> {
         gini_bin(avg)
     }
 
+    fn average(&self) -> f64 {
+        self.avg_updater.average()
+    }
+
     fn impurity_sides(&self) -> (f64, f64) {
         let (lhs_avg, rhs_avg) = self.avg_updater.average_sides();
         (gini_bin(lhs_avg), gini_bin(rhs_avg))
+    }
+
+    fn average_sides(&self) -> (f64, f64) {
+        self.avg_updater.average_sides()
     }
 }
 
