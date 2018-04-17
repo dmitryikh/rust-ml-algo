@@ -131,6 +131,10 @@ pub fn vec_sub<S>(a: &[S], b: &[S]) -> Vec<S>
         .map(|(ai, bi)| *ai - *bi).collect()
 }
 
+pub fn vec_norm(vec: &[f64]) -> f64 {
+    vec_dot(vec, vec).sqrt()
+}
+
 pub fn rmse_error(real: &[f64], pred: &[f64]) -> f64 {
     (real.iter().zip(pred.iter())
          .fold(0.0, |sum, (&ri, &pi)| sum + (ri - pi).powi(2))
@@ -275,8 +279,16 @@ fn vec_sub_cases() {
 }
 
 #[test]
+fn vec_norm_cases() {
+    assert_eq!(vec_norm(&[]), 0.0);
+    assert_eq!(vec_norm(&[0.0, 1.0, 2.0]), 5.0f64.sqrt());
+    assert_eq!(vec_norm(&[4.0, 5.0]), 41.0f64.sqrt());
+    assert_eq!(vec_norm(&[0.0, 2.0, 9.6]), 96.16f64.sqrt());
+}
+
+#[test]
 fn rmse_cases() {
-    assert_eq!(rmse_error(&[0.0, 1.0, 0.0], &[0.0, 0.0, 0.0]), (1.0 as f64/ 3.0).sqrt());
+    assert_eq!(rmse_error(&[0.0, 1.0, 0.0], &[0.0, 0.0, 0.0]), (1.0f64/ 3.0).sqrt());
     assert_eq!(rmse_error(&[1.0, 2.0, 10.0], &[1.0, 2.0, 10.0]), 0.0);
 }
 
