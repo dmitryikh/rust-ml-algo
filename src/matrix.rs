@@ -37,6 +37,17 @@ impl<S: Clone + Default> DMatrix<S>
         Ok(mat)
     }
 
+    pub fn from_row_slice(r: usize, c: usize, data: &[S]) -> Result<DMatrix<S>, String> {
+        if data.len() != r * c {
+            return Err("data length does not match given matrix size".to_string())
+        }
+        let mut result = DMatrix::new_zeros(r, c);
+        for i in 0..r {
+            result.set_row(i, &data[c*i..c*(i+1)])?
+        }
+        return Ok(result);
+    }
+
     pub fn resize_and_zero(&mut self, r: usize, c: usize) {
         for v in &mut self.data {
             *v = S::default();
