@@ -12,3 +12,4 @@ pub mod mshift;
 pub mod tree;
 pub mod rforest;
 pub mod linear;
+pub mod bayes;
