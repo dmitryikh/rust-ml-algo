@@ -6,7 +6,7 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::ops::{Add, Sub, Mul};
 use std::cmp;
-use rand::{Rng, Isaac64Rng, SeedableRng};
+use rand::{RngCore, Rng, Isaac64Rng, SeedableRng};
 use rand;
 
 use permutohedron::Heap;
@@ -154,7 +154,7 @@ pub fn isaac_rng(seed: u64) -> Isaac64Rng {
     } else {
         seed
     };
-    Isaac64Rng::from_seed(&[seed])
+    Isaac64Rng::new_from_u64(seed)
 }
 
 pub fn precision_recall(label: &[u32], predict: &[u32]) -> (f64 /*precision*/, f64 /*recall*/) {

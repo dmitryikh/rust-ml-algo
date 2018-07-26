@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 use rand::distributions::Range;
 
 use tree::{ClsTree, RegTree, CartOptions};

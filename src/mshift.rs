@@ -148,7 +148,7 @@ impl MeanShift {
         Ok(())
     }
 
-    fn predict_common(&self, test: &DMatrix<f64>) -> Result<KdTree<usize, &[f64]>, String> {
+    fn predict_common(&self, test: &DMatrix<f64>) -> Result<KdTree<f64, usize, &[f64]>, String> {
         let n_dim = test.cols();
         let n_clusters = self.n_clusters();
         if n_dim != self.centers.cols() {

@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["dmitry.khominich <khdmitryi@gmail.com>"]
 
 [dependencies]
-rand = "*"
-permutohedron = "*"
-kdtree = "*"
+rand = "0.5.4"
+permutohedron = "0.2.4"
+kdtree = "0.5.1"
