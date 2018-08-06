@@ -113,6 +113,9 @@ impl GaussianDistr {
 
 impl Distr for GaussianDistr {
     fn get_prob(&self, x: f64) -> f64 {
+        if self.dispersion == 0. && self.expectation == 0. {
+            return 1.;
+        }
         let dx = x - self.expectation;
         return 1. / (2. * std::f64::consts::PI * self.dispersion).sqrt() * (-dx * dx / (2. * self.dispersion)).exp();
     }
@@ -257,5 +260,36 @@ mod test {
             Err(e) => assert!(false, e)
         };
     }
+
+    #[test]
+    fn test_bayes_predict_digits() {
+        let data: DMatrix<f64> = DMatrix::from_csv("data/digits/data.csv", 0, ',', None).unwrap();
+        let target: DMatrix<u32> = DMatrix::from_csv("data/digits/target.csv", 0, ',', None).unwrap();
+
+        let mut source: Vec<DMatrix<f64>> = Vec::with_capacity(10);
+
+        for i in 0..10 {
+            source.push(
+                data
+                    .filter(|j: usize| target.get_val(j, 0) == i as u32)
+                    .transpose_copy()
+            )
+        };
+
+        let train = source.iter().map(|x| x).collect();
+        let mut bayes = NaiveBayes::new_uniform(10, 64, || Box::new(GaussianDistr::new()));
+        if let Err(e) = bayes.fit(&train) {
+            assert!(false, e);
+        }
+
+        for i in 0..20 {
+            let res = bayes.predict(&data.get_row(i).to_vec());
+            match res {
+                Err(e) => assert!(false, e),
+                Ok(v) => println!("{:?}\t{:?}", v, target.get_val(0, 0))
+            };
+        }
+    }
+
 }
 

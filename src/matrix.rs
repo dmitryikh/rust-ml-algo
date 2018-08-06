@@ -2,7 +2,7 @@ use std::fmt;
 use std::str;
 use utils::read_csv_job;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DMatrix<S>
 {
     r: usize,
@@ -74,6 +74,10 @@ impl<S: Clone + Default> DMatrix<S>
         self.data[row * self.c + col].clone()
     }
 
+    pub fn set_val(& mut self, val: S, row: usize, col: usize) {
+        self.data[row*self.c + col] = val.clone();
+    }
+
     pub fn get_val_mut(&mut self, row: usize, col: usize) -> &mut S {
         &mut self.data[row * self.c + col]
     }
@@ -122,6 +126,25 @@ impl<S: Clone + Default> DMatrix<S>
         }
     }
 
+    pub fn filter<F>(&self, f: F) -> DMatrix<S> where F: Fn(usize) -> bool {
+        let mut result: DMatrix<S> = DMatrix::new_zeros(0, self.cols());
+        for i in 0..self.rows() {
+            if f(i) {
+                result.append_row(self.get_row(i));
+            }
+        }
+        return result;
+    }
+
+    pub fn transpose_copy(&self) -> DMatrix<S> {
+        let mut result = DMatrix::new_zeros(self.cols(), self.rows());
+        for i in 0..self.rows() {
+            for j in 0..self.cols() {
+                result.set_val(self.get_val(i, j), j, i);
+            }
+        }
+        return result;
+    }
 }
 
 impl<S: fmt::Display> fmt::Display for DMatrix<S> {
@@ -169,4 +192,50 @@ fn from_csv_usecols() {
     assert_eq!(mat.cols(), 2);
     assert_eq!(mat.get_row(0), [2.0, 3.0]);
     assert_eq!(mat.get_row(1), [1.4, 999.9]);
+}
+
+#[test]
+fn test_filter() {
+    let matrix_constructor = || DMatrix::from_row_slice(3, 3, &[
+            1., 2., 3.,
+            4., 5., 6.,
+            7., 8., 9.
+        ] as &[f64]).unwrap();
+
+    let m1 = matrix_constructor();
+    let m1_filtered = m1.filter(|i | true);
+    assert_eq!(m1_filtered.cols(), 3);
+    assert_eq!(m1_filtered.rows(), 3);
+
+    let m2 = matrix_constructor();
+    let m2_filtered = m2.filter(|i | false);
+    assert_eq!(m2_filtered.cols(), 3);
+    assert_eq!(m2_filtered.rows(), 0);
+
+    let m3 = matrix_constructor();
+    let m3_filtered = m3.filter(|i | m3.get_row(i)[0] > 2.);
+    assert_eq!(m3_filtered.cols(), 3);
+    assert_eq!(m3_filtered.rows(), 2);
+    assert_eq!(m3_filtered.get_row(0), &[4., 5., 6.] as &[f64]);
+    assert_eq!(m3_filtered.get_row(1), &[7., 8., 9.] as &[f64]);
+}
+
+#[test]
+fn test_transpose() {
+    let m1 = DMatrix::from_row_slice(2, 3, &[
+            1., 2., 3.,
+            4., 5., 6.
+        ] as &[f64]).unwrap();
+    let m2 = m1.transpose_copy();
+
+    assert_eq!(m1.cols(), 3);
+    assert_eq!(m1.rows(), 2);
+    assert_eq!(m1.get_row(0), &[1., 2., 3.] as &[f64]);
+    assert_eq!(m1.get_row(1), &[4., 5., 6.] as &[f64]);
+
+    assert_eq!(m2.cols(), 2);
+    assert_eq!(m2.rows(), 3);
+    assert_eq!(m2.get_row(0), &[1., 4.] as &[f64]);
+    assert_eq!(m2.get_row(1), &[2., 5.] as &[f64]);
+    assert_eq!(m2.get_row(2), &[3., 6.] as &[f64]);
 }
