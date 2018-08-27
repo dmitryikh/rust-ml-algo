@@ -17,6 +17,7 @@ For today here are:
 2. Classification
     1. Decision tree
     2. Random forest
+    3. Naive Bayes
 
 3. Regression
     1. Decision tree
