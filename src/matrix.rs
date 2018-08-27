@@ -1,4 +1,6 @@
+use std::cmp;
 use std::fmt;
+use std::ops;
 use std::str;
 use utils::read_csv_job;
 
@@ -10,7 +12,7 @@ pub struct DMatrix<S>
     data: Vec<S>,
 }
 
-impl<S: Clone + Default> DMatrix<S>
+impl<S: Clone + Default + ops::Sub<Output=S> + cmp::PartialOrd> DMatrix<S>
 {
     pub fn new() -> DMatrix<S> {
         DMatrix{r: 0, c: 0, data: Vec::new()}
@@ -36,6 +38,17 @@ impl<S: Clone + Default> DMatrix<S>
             })?;
         Ok(mat)
     }
+
+    pub fn from_row_slice(r: usize, c: usize, data: &[S]) -> Result<DMatrix<S>, String> {
+         if data.len() != r * c {
+             return Err("data length does not match given matrix size".to_string())
+         }
+         let mut result = DMatrix::new_zeros(r, c);
+         for i in 0..r {
+             result.set_row(i, &data[c*i..c*(i+1)])?;
+         }
+         return Ok(result);
+     }
 
     pub fn resize_and_zero(&mut self, r: usize, c: usize) {
         for v in &mut self.data {
@@ -109,6 +122,24 @@ impl<S: Clone + Default> DMatrix<S>
         } else {
             Ok(())
         }
+    }
+
+    pub fn equal(&self, rhs: &DMatrix<S>, eps: S) -> bool {
+        if self.cols() != rhs.cols() { return false; }
+        if self.rows() != rhs.rows() { return false; }
+
+        if self.cols() == 0 || self.rows() == 0 { return true; }
+
+        for i in 0..self.rows() {
+            let self_row = self.get_row(i);
+            let rhs_row = rhs.get_row(i);
+            for j in 0..self.cols() {
+                if (self_row[j].clone() - rhs_row[j].clone() > eps) || (rhs_row[j].clone() - self_row[j].clone() > eps) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
 }
